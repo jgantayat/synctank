@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: contract-platform
+server:
+  port: 8081
+
+platform:
+  s3:
+    endpoint: http://localhost:9000
+    bucket: specs
+    access-key: platform
+    secret-key: platform123
