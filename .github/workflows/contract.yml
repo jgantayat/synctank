@@ -1,0 +1,114 @@
+name: Contract Spec Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A newer push to the same PR cancels the older run — saves minutes and confusion
+concurrency:
+  group: contract-${{ github.ref }}
+  cancel-in-progress: true
+
+# Needed so the baseline-commit step (Phase 4) may push to main
+permissions:
+  contents: write
+
+jobs:
+  spec-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout synctank
+        uses: actions/checkout@v4
+        # one checkout brings in orders-backend/, contract-platform/, and docker-compose.yml together
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Start MinIO
+        run: |
+          docker compose up -d minio
+          echo "Waiting for MinIO..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
+              echo "MinIO is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO never became healthy"; docker compose logs minio; exit 1
+
+      - name: Build and start contract-platform
+        working-directory: contract-platform
+        env:
+          S3_ENDPOINT: http://localhost:9000
+          S3_ACCESS_KEY: platform
+          S3_SECRET_KEY: platform123
+          S3_BUCKET: specs
+        run: |
+          mvn -q -DskipTests package
+          nohup java -jar target/contract-platform-*.jar > platform.log 2>&1 &
+          echo "Waiting for contract-platform..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8081/health > /dev/null; then
+              echo "contract-platform is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "contract-platform never became healthy"; exit 1
+
+      - name: Generate OpenAPI spec
+        working-directory: orders-backend
+        run: mvn -q verify
+
+      - name: Upload spec (versioned by commit)
+        run: |
+          curl -fS -X PUT \
+            -H "Content-Type: application/json" \
+            --data-binary @orders-backend/target/openapi.json \
+            "http://localhost:8081/specs/orders-backend/${GITHUB_SHA}"
+          echo ""
+          echo "Stored spec for commit ${GITHUB_SHA}"
+
+      - name: Save spec as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-${{ github.sha }}
+          path: orders-backend/target/openapi.json
+
+      # ---------- main-branch-only steps (Phase 4) ----------
+
+      - name: Publish baseline (main only)
+        if: github.event_name == 'push'
+        run: |
+          curl -fS -X PUT \
+            -H "Content-Type: text/plain" \
+            --data "${GITHUB_SHA}" \
+            "http://localhost:8081/specs/orders-backend/baseline"
+          echo ""
+          echo "Baseline now points at ${GITHUB_SHA}"
+
+      - name: Commit baseline file to repo (main only)
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p orders-backend/contract
+          cp orders-backend/target/openapi.json orders-backend/contract/openapi.baseline.json
+          if [ -z "$(git status --porcelain orders-backend/contract/)" ]; then
+            echo "Baseline unchanged — nothing to commit"; exit 0
+          fi
+          git config user.name  "synctank-ci"
+          git config user.email "synctank-ci@users.noreply.github.com"
+          git add orders-backend/contract/openapi.baseline.json
+          git commit -m "chore: publish contract baseline for ${GITHUB_SHA} [skip ci]"
+          git push
+
+      # ---------- debugging aid ----------
+
+      - name: Dump platform log on failure
+        if: failure()
+        run: cat contract-platform/platform.log || true
