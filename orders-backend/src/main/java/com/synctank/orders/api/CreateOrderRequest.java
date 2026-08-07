@@ -5,5 +5,6 @@ import jakarta.validation.constraints.Positive;
 
 public record CreateOrderRequest(
         @NotBlank String customerName,
-        @Positive double amount
+        @Positive double amount,
+        String note
 ) {}
