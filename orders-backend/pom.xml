@@ -47,6 +47,9 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<jmxPort>9010</jmxPort>   <!-- default 9001 clashes with MinIO console -->
+				</configuration>
 				<executions>
 					<execution>
 						<id>start-app-for-spec</id>
@@ -69,7 +72,7 @@
 					</execution>
 				</executions>
 				<configuration>
-					<apiDocsUrl>http://localhost:8081/v3/api-docs</apiDocsUrl>
+					<apiDocsUrl>http://localhost:8080/v3/api-docs</apiDocsUrl>
 					<outputFileName>openapi.json</outputFileName>
 					<outputDir>${project.build.directory}</outputDir>
 				</configuration>
