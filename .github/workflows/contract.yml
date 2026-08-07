@@ -21,11 +21,11 @@ jobs:
 
     steps:
       - name: Checkout synctank
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         # one checkout brings in orders-backend/, contract-platform/, and docker-compose.yml together
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -76,7 +76,7 @@ jobs:
           echo "Stored spec for commit ${GITHUB_SHA}"
 
       - name: Save spec as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: openapi-${{ github.sha }}
           path: orders-backend/target/openapi.json
