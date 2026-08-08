@@ -22,8 +22,8 @@ public class OrderController {
         );
     }
 
-//    @PostMapping
-//    public OrderResponse createOrder(@Valid @RequestBody CreateOrderRequest req) {
-//        return new OrderResponse(42L, req.customerName(), req.amount(), "NEW");
-//    }
+    @PostMapping
+    public OrderResponse createOrder(@Valid @RequestBody CreateOrderRequest req) {
+        return new OrderResponse(42L, req.customerName(), req.amount(), "NEW");
+    }
 }
