@@ -1,2 +1,10 @@
-package com.synctank.platform.diff;public record DiffReport() {
-}
+package com.synctank.platform.diff;
+
+import java.util.List;
+
+public record DiffReport(
+        boolean changed,
+        Severity highestSeverity,
+        List<ChangeRecord> changes,
+        String markdown
+) {}

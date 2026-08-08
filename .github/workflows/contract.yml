@@ -81,6 +81,48 @@ jobs:
           name: openapi-${{ github.sha }}
           path: orders-backend/target/openapi.json
 
+      - name: Run contract diff (baseline vs candidate)
+        run: |
+          if [ ! -f orders-backend/contract/openapi.baseline.json ]; then
+            echo "No baseline yet on this repo — nothing to diff against, skipping."
+            exit 0
+          fi
+
+          jq -n \
+            --rawfile baseline orders-backend/contract/openapi.baseline.json \
+            --rawfile candidate orders-backend/target/openapi.json \
+            '{baseline: $baseline, candidate: $candidate}' > /tmp/diff-request.json
+
+          curl -fS -X POST -H "Content-Type: application/json" \
+            --data-binary @/tmp/diff-request.json \
+            http://localhost:8081/diff \
+            -o diff-report.json
+
+          echo "----- Diff report -----"
+          cat diff-report.json
+          echo ""
+
+          SEVERITY=$(jq -r '.highestSeverity' diff-report.json)
+          echo "Highest severity: $SEVERITY"
+          echo "CONTRACT_SEVERITY=$SEVERITY" >> "$GITHUB_ENV"
+
+      - name: Save diff report as artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: diff-report-${{ github.sha }}
+          path: diff-report.json
+
+      - name: Warn on dangerous change
+        if: env.CONTRACT_SEVERITY == 'DANGEROUS'
+        run: echo "::warning::Contract diff classified this change as DANGEROUS — type-safe but may change runtime behaviour. Review diff-report.json before merging."
+
+      - name: Fail PR on breaking change
+        if: env.CONTRACT_SEVERITY == 'BREAKING'
+        run: |
+          echo "::error::Contract diff classified this change as BREAKING. See diff-report.json artifact."
+          exit 1
+
       # ---------- main-branch-only steps (Phase 4) ----------
 
       - name: Publish baseline (main only)
