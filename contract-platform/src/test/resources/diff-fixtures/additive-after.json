@@ -1,0 +1,33 @@
+{
+  "openapi": "3.0.1",
+  "info": {"title": "Orders API", "version": "1.0"},
+  "paths": {
+    "/api/orders/{id}": {
+      "get": {
+        "operationId": "getOrder",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+        "responses": {
+          "200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrderResponse"}}}}
+        }
+      }
+    },
+    "/api/orders": {
+      "post": {
+        "operationId": "createOrder",
+        "responses": {"200": {"description": "OK"}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "status": {"type": "string"},
+          "note": {"type": "string"}
+        }
+      }
+    }
+  }
+}
