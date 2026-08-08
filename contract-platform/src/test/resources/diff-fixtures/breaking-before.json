@@ -1,0 +1,13 @@
+{
+  "openapi": "3.0.1",
+  "info": {"title": "Orders API", "version": "1.0"},
+  "paths": {
+    "/api/orders/{id}": {
+      "get": {"operationId": "getOrder", "responses": {"200": {"description": "OK"}}}
+    },
+    "/api/orders": {
+      "post": {"operationId": "createOrder", "responses": {"200": {"description": "OK"}}}
+    }
+  },
+  "components": {"schemas": {}}
+}
