@@ -30,7 +30,12 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+            node-version: '20'
+            cache: npm
+            cache-dependency-path: orders-frontend/package-lock.json
       - name: Start MinIO
         run: |
           docker compose up -d minio
@@ -65,7 +70,15 @@ jobs:
       - name: Generate OpenAPI spec
         working-directory: orders-backend
         run: mvn -q verify
+      - name: Regenerate frontend client from candidate spec
+        working-directory: orders-frontend
+        run: |
+            npm ci
+            npm run generate:api
 
+            - name: Build frontend against candidate contract
+              working-directory: orders-frontend
+              run: npm run build
       - name: Upload spec (versioned by commit)
         run: |
           curl -fS -X PUT \

@@ -1,0 +1,8 @@
+@if (order(); as currentOrder) {
+  <div>
+    <h2>Order #{{ currentOrder.id }}</h2>
+    <p>Customer: {{ currentOrder.customerName }}</p>
+    <p>Amount: {{ formattedAmount }}</p>
+    <p>Status: {{ currentOrder.status }}</p>
+  </div>
+}
