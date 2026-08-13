@@ -5,6 +5,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record OrderResponse(
         Long id,
         String customerName,
-        Money total,
+        @Schema(minimum = "0") double amount,
         @Schema(allowableValues = {"PENDING", "SHIPPED", "DELIVERED", "CANCELLED"}) String status
 ) {}
