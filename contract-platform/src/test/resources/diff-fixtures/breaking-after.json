@@ -3,8 +3,30 @@
   "info": {"title": "Orders API", "version": "1.0"},
   "paths": {
     "/api/orders/{id}": {
-      "get": {"operationId": "getOrder", "responses": {"200": {"description": "OK"}}}
+      "get": {
+        "operationId": "getOrder",
+        "responses": {
+          "200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrderResponse"}}}}
+        }
+      }
     }
   },
-  "components": {"schemas": {}}
+  "components": {
+    "schemas": {
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "amount": {"$ref": "#/components/schemas/Money"}
+        }
+      },
+      "Money": {
+        "type": "object",
+        "properties": {
+          "currency": {"type": "string"},
+          "value": {"type": "number"}
+        }
+      }
+    }
+  }
 }

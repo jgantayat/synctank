@@ -3,11 +3,27 @@
   "info": {"title": "Orders API", "version": "1.0"},
   "paths": {
     "/api/orders/{id}": {
-      "get": {"operationId": "getOrder", "responses": {"200": {"description": "OK"}}}
+      "get": {
+        "operationId": "getOrder",
+        "responses": {
+          "200": {"description": "OK", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrderResponse"}}}}
+        }
+      }
     },
     "/api/orders": {
       "post": {"operationId": "createOrder", "responses": {"200": {"description": "OK"}}}
     }
   },
-  "components": {"schemas": {}}
+  "components": {
+    "schemas": {
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "amount": {"type": "number"},
+          "status": {"type": "string"}
+        }
+      }
+    }
+  }
 }

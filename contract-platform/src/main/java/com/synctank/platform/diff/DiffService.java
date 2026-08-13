@@ -23,6 +23,7 @@ public class DiffService {
 
         List<ChangeRecord> records = new ArrayList<>();
         records.addAll(classifier.classifyStructuralChanges(changed));
+        records.addAll(classifier.classifyFieldChanges(changed.getOldSpecOpenApi(), changed.getNewSpecOpenApi()));
         records.addAll(classifier.classifyDangerousChanges(changed.getOldSpecOpenApi(), changed.getNewSpecOpenApi()));
 
         Severity highest = records.stream()
@@ -35,7 +36,6 @@ public class DiffService {
         return new DiffReport(changed.isDifferent(), highest, records, markdown);
     }
 
-    /** BREAKING outranks DANGEROUS outranks ADDITIVE, for picking the single "headline" severity. */
     private int rank(Severity s) {
         return switch (s) {
             case ADDITIVE -> 0;
