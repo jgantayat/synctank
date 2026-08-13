@@ -14,11 +14,6 @@ import java.util.Map;
 @Component
 public class SeverityClassifier {
 
-    /**
-     * Structural changes come straight from openapi-diff's own endpoint comparison.
-     * New endpoints are additive — no existing consumer calls a URL that didn't exist.
-     * Removed endpoints are breaking — any consumer still calling it gets a 404.
-     */
     public List<ChangeRecord> classifyStructuralChanges(ChangedOpenApi diff) {
         List<ChangeRecord> records = new ArrayList<>();
 
@@ -46,11 +41,72 @@ public class SeverityClassifier {
     }
 
     /**
-     * Dangerous changes: patterns that pass a type-checker cleanly but change runtime
-     * behaviour in ways TypeScript cannot catch. We walk matching schemas by name and
-     * compare properties directly, rather than relying on openapi-diff's internal
-     * schema-diff model — keeps this logic stable regardless of library version.
+     * Field-level breaking changes: a property disappearing entirely, or a property
+     * that keeps its name but changes shape underneath it. Both are structurally
+     * invisible to openapi-diff's own endpoint-level add/remove comparison, but both
+     * are exactly the kind of change that makes generated TypeScript fail to compile
+     * at every use site — the canonical BREAKING case from your own worked example
+     * (double amount -> Money total).
      */
+    public List<ChangeRecord> classifyFieldChanges(OpenAPI oldApi, OpenAPI newApi) {
+        List<ChangeRecord> records = new ArrayList<>();
+
+        Map<String, Schema> oldSchemas = schemasOf(oldApi);
+        Map<String, Schema> newSchemas = schemasOf(newApi);
+
+        for (Map.Entry<String, Schema> entry : newSchemas.entrySet()) {
+            String schemaName = entry.getKey();
+            Schema<?> newSchema = entry.getValue();
+            Schema<?> oldSchema = oldSchemas.get(schemaName);
+            if (oldSchema == null || oldSchema.getProperties() == null || newSchema.getProperties() == null) {
+                continue; // brand-new schema entirely — nothing to compare yet
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Schema> oldProps = oldSchema.getProperties();
+            @SuppressWarnings("unchecked")
+            Map<String, Schema> newProps = newSchema.getProperties();
+
+            // FIELD_REMOVED — a property that existed before is simply gone now.
+            // (A rename like amount -> total shows up as this, on the old name,
+            // plus an ADDITIVE new-field entry on the new name — two independent
+            // facts, which is the accurate way to describe what actually happened.)
+            for (String propName : oldProps.keySet()) {
+                if (!newProps.containsKey(propName)) {
+                    String location = schemaName + "." + propName;
+                    records.add(new ChangeRecord(
+                            Severity.BREAKING,
+                            "FIELD_REMOVED",
+                            location,
+                            "'" + location + "' was removed — generated TypeScript no longer has this "
+                                    + "property; every use site fails to compile."
+                    ));
+                }
+            }
+
+            // FIELD_TYPE_CHANGED — same property name survives, but its shape changed.
+            for (Map.Entry<String, Schema> propEntry : newProps.entrySet()) {
+                String propName = propEntry.getKey();
+                Schema<?> newProp = propEntry.getValue();
+                Schema<?> oldProp = oldProps.get(propName);
+                if (oldProp == null) continue; // brand-new field — additive, not this rule's concern
+
+                if (typeChanged(oldProp, newProp)) {
+                    String location = schemaName + "." + propName;
+                    records.add(new ChangeRecord(
+                            Severity.BREAKING,
+                            "FIELD_TYPE_CHANGED",
+                            location,
+                            "'" + location + "' changed from " + describe(oldProp) + " to " + describe(newProp)
+                                    + " — generated TypeScript changes shape; every use site fails to compile."
+                    ));
+                }
+            }
+        }
+
+        return records;
+    }
+
     public List<ChangeRecord> classifyDangerousChanges(OpenAPI oldApi, OpenAPI newApi) {
         List<ChangeRecord> records = new ArrayList<>();
 
@@ -128,7 +184,6 @@ public class SeverityClassifier {
         return records;
     }
 
-    /** "Tightened" = the new bound rejects input the old bound would have accepted. */
     private void addIfTightened(List<ChangeRecord> records, String location, String constraint,
                                 Number oldBound, Number newBound, boolean isLowerBound) {
         if (oldBound == null || newBound == null) return;
@@ -144,6 +199,37 @@ public class SeverityClassifier {
                 "'" + location + "' " + constraint + " tightened from " + oldBound + " to " + newBound
                         + " — requests valid under the old contract may now be rejected."
         ));
+    }
+
+    /** True if the property's effective type signature differs between old and new. */
+    private boolean typeChanged(Schema<?> oldProp, Schema<?> newProp) {
+        return !typeSignature(oldProp).equals(typeSignature(newProp));
+    }
+
+    /**
+     * A compact fingerprint of a schema's shape: the referenced component name if it's
+     * a $ref (e.g. "ref:#/components/schemas/Money"), the array's own signature if it's
+     * an array, or the primitive type+format (e.g. "number:double") otherwise.
+     */
+    private String typeSignature(Schema<?> schema) {
+        if (schema.get$ref() != null) {
+            return "ref:" + schema.get$ref();
+        }
+        if ("array".equals(schema.getType()) && schema.getItems() != null) {
+            return "array<" + typeSignature(schema.getItems()) + ">";
+        }
+        String type = schema.getType() != null ? schema.getType() : "unknown";
+        String format = schema.getFormat();
+        return format != null ? type + ":" + format : type;
+    }
+
+    /** Human-readable version of a schema's shape, for the change description text. */
+    private String describe(Schema<?> schema) {
+        if (schema.get$ref() != null) {
+            String ref = schema.get$ref();
+            return ref.substring(ref.lastIndexOf('/') + 1);
+        }
+        return schema.getType() != null ? schema.getType() : "unknown";
     }
 
     @SuppressWarnings("unchecked")

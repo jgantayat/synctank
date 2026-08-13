@@ -25,11 +25,12 @@ class SeverityClassifierTest {
     }
 
     @Test
-    void removedEndpointIsClassifiedAsBreaking() throws IOException {
+    void endpointFieldRemovalAndTypeChangesAreClassifiedAsBreaking() throws IOException {
         DiffReport report = diffFixtures("breaking-before.json", "breaking-after.json");
 
         assertThat(report.highestSeverity()).isEqualTo(Severity.BREAKING);
-        assertThat(categoriesOf(report)).contains("ENDPOINT_REMOVED");
+        assertThat(categoriesOf(report))
+                .contains("ENDPOINT_REMOVED", "FIELD_REMOVED", "FIELD_TYPE_CHANGED");
     }
 
     @Test
