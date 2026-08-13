@@ -68,9 +68,6 @@ public class SeverityClassifier {
             Map<String, Schema> newProps = newSchema.getProperties();
 
             // FIELD_REMOVED — a property that existed before is simply gone now.
-            // (A rename like amount -> total shows up as this, on the old name,
-            // plus an ADDITIVE new-field entry on the new name — two independent
-            // facts, which is the accurate way to describe what actually happened.)
             for (String propName : oldProps.keySet()) {
                 if (!newProps.containsKey(propName)) {
                     String location = schemaName + "." + propName;
@@ -118,7 +115,7 @@ public class SeverityClassifier {
             Schema<?> newSchema = entry.getValue();
             Schema<?> oldSchema = oldSchemas.get(schemaName);
             if (oldSchema == null || oldSchema.getProperties() == null || newSchema.getProperties() == null) {
-                continue; // brand-new schema, or nothing to compare — not a dangerous-tier concern
+                continue;
             }
 
             @SuppressWarnings("unchecked")
@@ -130,7 +127,7 @@ public class SeverityClassifier {
                 String propName = propEntry.getKey();
                 Schema<?> newProp = propEntry.getValue();
                 Schema<?> oldProp = oldProps.get(propName);
-                if (oldProp == null) continue; // new field — handled as additive elsewhere
+                if (oldProp == null) continue;
 
                 String location = schemaName + "." + propName;
                 records.addAll(nullabilityFlip(location, oldProp, newProp));
@@ -201,16 +198,10 @@ public class SeverityClassifier {
         ));
     }
 
-    /** True if the property's effective type signature differs between old and new. */
     private boolean typeChanged(Schema<?> oldProp, Schema<?> newProp) {
         return !typeSignature(oldProp).equals(typeSignature(newProp));
     }
 
-    /**
-     * A compact fingerprint of a schema's shape: the referenced component name if it's
-     * a $ref (e.g. "ref:#/components/schemas/Money"), the array's own signature if it's
-     * an array, or the primitive type+format (e.g. "number:double") otherwise.
-     */
     private String typeSignature(Schema<?> schema) {
         if (schema.get$ref() != null) {
             return "ref:" + schema.get$ref();
@@ -223,7 +214,6 @@ public class SeverityClassifier {
         return format != null ? type + ":" + format : type;
     }
 
-    /** Human-readable version of a schema's shape, for the change description text. */
     private String describe(Schema<?> schema) {
         if (schema.get$ref() != null) {
             String ref = schema.get$ref();
