@@ -26,6 +26,12 @@ jobs:
         uses: actions/checkout@v5
         # one checkout brings in orders-backend/, contract-platform/, and docker-compose.yml together
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        # ubuntu-latest does NOT ship rg preinstalled — confirmed by a real CI failure
+        # ("Cannot run program 'rg': Exec failed, error: 2 (No such file or directory)")
+        # from UsageScanner's ProcessBuilder. Needed before "Generate AI change report" below.
+
       - name: Set up Java 21
         uses: actions/setup-java@v5
         with:

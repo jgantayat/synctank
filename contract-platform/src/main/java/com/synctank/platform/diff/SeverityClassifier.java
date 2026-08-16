@@ -215,10 +215,10 @@ public class SeverityClassifier {
         if (schema.get$ref() != null) {
             return "ref:" + schema.get$ref();
         }
-        if ("array".equals(schema.getType()) && schema.getItems() != null) {
+        String type = effectiveType(schema);
+        if ("array".equals(type) && schema.getItems() != null) {
             return "array<" + typeSignature(schema.getItems()) + ">";
         }
-        String type = schema.getType() != null ? schema.getType() : "unknown";
         String format = schema.getFormat();
         return format != null ? type + ":" + format : type;
     }
@@ -229,7 +229,26 @@ public class SeverityClassifier {
             String ref = schema.get$ref();
             return ref.substring(ref.lastIndexOf('/') + 1);
         }
-        return schema.getType() != null ? schema.getType() : "unknown";
+        return effectiveType(schema);
+    }
+
+    /**
+     * Swagger-core 2.2.x represents a schema's type differently depending on which OpenAPI
+     * version the source document declares. OpenAPI 3.0 documents populate the legacy
+     * singular getType(). OpenAPI 3.1 documents — which springdoc now generates by default —
+     * populate a different field, getTypes() (a Set<String>), leaving getType() null even for
+     * an ordinary single-type schema like {"type": "string"}. Check both, so classification is
+     * correct regardless of which OpenAPI version the spec declares.
+     * See: https://github.com/swagger-api/swagger-core/wiki/Swagger-2.X---OpenAPI-3.1
+     */
+    private String effectiveType(Schema<?> schema) {
+        if (schema.getType() != null) {
+            return schema.getType();
+        }
+        if (schema.getTypes() != null && !schema.getTypes().isEmpty()) {
+            return schema.getTypes().iterator().next();
+        }
+        return "unknown";
     }
 
     @SuppressWarnings("unchecked")
