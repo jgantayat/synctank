@@ -21,7 +21,7 @@ public class UsageScanner {
             // -n: line numbers, --no-heading: one match per line, -g: only .ts files,
             // word boundary avoids matching "amountDue" when we mean "amount"
             ProcessBuilder pb = new ProcessBuilder(
-                    "rg", "-n", "--no-heading", "-g", "*.ts",
+                    "rg", "-n", "--no-heading", "-g", "*.ts", "-g", "!generated/**",
                     "\\b" + fieldName + "\\b",
                     frontendSrcRoot.toString()
             );
