@@ -12,19 +12,19 @@ public class OrderController {
 
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public OrderResponse getOrder(@PathVariable Long id) {
-        return new OrderResponse(id, "Asha Rao", 249.50, "SHIPPED");
+        return new OrderResponse(id.toString(), "Asha Rao", "SHIPPED");
     }
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public List<OrderResponse> listOrders() {
         return List.of(
-                new OrderResponse(1L, "Asha Rao", 249.50, "SHIPPED"),
-                new OrderResponse(2L, "Vikram Iyer", 89.00, "NEW")
+                new OrderResponse("1", "Asha Rao", "SHIPPED"),
+                new OrderResponse("2", "Vikram Iyer", "NEW")
         );
     }
 
     @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public OrderResponse createOrder(@Valid @RequestBody CreateOrderRequest req) {
-        return new OrderResponse(42L, req.customerName(), req.amount(), "NEW");
+        return new OrderResponse("42", req.customerName(), "NEW");
     }
 }
