@@ -11,9 +11,11 @@ concurrency:
   group: contract-${{ github.ref }}
   cancel-in-progress: true
 
-# Needed so the baseline-commit step (Phase 4) may push to main
+# Needed so the baseline-commit step (Phase 4) may push to main, and so the
+# Day 05 report step (below) may post a comment on the pull request
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   spec-pipeline:
@@ -57,6 +59,9 @@ jobs:
           S3_ACCESS_KEY: platform
           S3_SECRET_KEY: platform123
           S3_BUCKET: specs
+          # Day 05 — required so the AI report step later in this job can reach Anthropic.
+          # Set this as a repository secret: Settings → Secrets and variables → Actions.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           mvn -q -DskipTests package
           nohup java -jar target/contract-platform-*.jar > platform.log 2>&1 &
@@ -83,7 +88,14 @@ jobs:
         working-directory: orders-frontend
         run: npm run build
 
+      # ---------- if: always() below here through "Run contract diff" ----------
+      # These three steps do NOT depend on the frontend build succeeding — the diff only
+      # needs orders-backend/target/openapi.json, produced two steps ago. Without if: always(),
+      # a BREAKING change that fails "Build frontend against candidate contract" would skip
+      # severity classification entirely — exactly the case where you need it most.
+
       - name: Upload spec (versioned by commit)
+        if: always()
         run: |
           curl -fS -X PUT \
             -H "Content-Type: application/json" \
@@ -93,12 +105,14 @@ jobs:
           echo "Stored spec for commit ${GITHUB_SHA}"
 
       - name: Save spec as workflow artifact
+        if: always()
         uses: actions/upload-artifact@v5
         with:
           name: openapi-${{ github.sha }}
           path: orders-backend/target/openapi.json
 
       - name: Run contract diff (baseline vs candidate)
+        if: always()
         run: |
           if [ ! -f orders-backend/contract/openapi.baseline.json ]; then
             echo "No baseline yet on this repo — nothing to diff against, skipping."
@@ -129,6 +143,62 @@ jobs:
         with:
           name: diff-report-${{ github.sha }}
           path: diff-report.json
+
+      # ---------- Day 05 — AI change report ----------
+      # Both steps below only run when Run contract diff actually produced a verdict
+      # (env.CONTRACT_SEVERITY is empty on the very first PR before any baseline exists,
+      # and correctly stays empty — see "Run contract diff"'s own early-exit above).
+      # if: always() matters here for the same reason as the three steps above: this must
+      # still run even after a later step (Fail PR on breaking change) fails the job.
+
+      - name: Generate AI change report
+        if: always() && env.CONTRACT_SEVERITY != ''
+        working-directory: contract-platform
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          FRONTEND_SRC="${{ github.workspace }}/orders-frontend/src"
+          curl -s -X POST http://localhost:8081/report \
+            -H "Content-Type: application/json" \
+            -d "{\"diff\": $(cat ../diff-report.json), \"frontendSrcPath\": \"${FRONTEND_SRC}\"}" \
+            -o ../report.json
+          echo "----- Change report -----"
+          cat ../report.json
+          echo ""
+
+      - name: Post change report as PR comment
+        if: always() && env.CONTRACT_SEVERITY != '' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let report;
+            try {
+              report = JSON.parse(fs.readFileSync('report.json', 'utf8'));
+            } catch (e) {
+              console.log('report.json missing or not valid JSON — skipping comment:', e.message);
+              return;
+            }
+
+            const changeLines = report.changes.map(c =>
+              `- **${c.severity}** \`${c.location}\` — ${c.plainEnglish}` +
+              (c.usageHits.length
+                ? `\n  - Used in: ${c.usageHits.map(u => `\`${u.split('/').pop()}\``).join(', ')}`
+                : '\n  - No usages found in orders-frontend/src')
+            ).join('\n');
+
+            const patchBlock = report.suggestedMigrationPatch
+              ? `\n\n**Suggested migration:**\n\`\`\`diff\n${report.suggestedMigrationPatch}\n\`\`\`\n\n_Advisory only — review before applying._`
+              : '';
+
+            const body = `### 🤖 Contract change report\n\n${report.summary}\n\n${changeLines}${patchBlock}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
 
       - name: Warn on dangerous change
         if: env.CONTRACT_SEVERITY == 'DANGEROUS'
