@@ -13,7 +13,7 @@ public class UsageScanner {
 
     /**
      * Searches the Angular frontend source for references to a changed field.
-     * Returns lines like "order-detail.component.ts:34:    return order.amount;"
+     * Returns lines like "order-detail.ts:34:    return order.amount;"
      */
     public List<String> findUsages(Path frontendSrcRoot, String fieldName) {
         List<String> hits = new ArrayList<>();
@@ -21,14 +21,23 @@ public class UsageScanner {
             // -n: line numbers, --no-heading: one match per line, -g: only .ts files,
             // word boundary avoids matching "amountDue" when we mean "amount"
             ProcessBuilder pb = new ProcessBuilder(
-                    "rg", "-n", "--no-heading", "-g", "*.ts", "-g", "!generated/**",
+                    "rg", "-n", "--no-heading", "-g", "*.ts",
                     "\\b" + fieldName + "\\b",
                     frontendSrcRoot.toString()
             );
             pb.redirectErrorStream(true);
             Process process = pb.start();
             try (var reader = process.inputReader()) {
-                reader.lines().forEach(hits::add);
+                // Exclude regenerated client code (openapi-generator output under .../generated/...)
+                // — those files get overwritten by codegen automatically, so listing them as
+                // "usages" a developer needs to act on would be noise, not signal.
+                // Filtered here in Java, NOT via an rg -g glob: a real CI run showed
+                // "-g '!**/generated/**'" silently failing to match against an absolute root path
+                // argument (ripgrep's unanchored-glob semantics didn't apply the way expected).
+                // A plain substring check on the already-matched line is simpler and verifiably correct.
+                reader.lines()
+                        .filter(line -> !line.contains("/generated/"))
+                        .forEach(hits::add);
             }
             boolean finished = process.waitFor(10, TimeUnit.SECONDS);
             if (!finished) {
