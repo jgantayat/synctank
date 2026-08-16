@@ -152,13 +152,13 @@ jobs:
       # still run even after a later step (Fail PR on breaking change) fails the job.
 
       - name: Generate AI change report
-        if: always() && env.CONTRACT_SEVERITY != ''
+        if: always() && (env.CONTRACT_SEVERITY == 'BREAKING' || env.CONTRACT_SEVERITY == 'DANGEROUS' || env.CONTRACT_SEVERITY == 'ADDITIVE')
         working-directory: contract-platform
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           FRONTEND_SRC="${{ github.workspace }}/orders-frontend/src"
-          curl -s -X POST http://localhost:8081/report \
+          curl -s --max-time 60 -X POST http://localhost:8081/report \
             -H "Content-Type: application/json" \
             -d "{\"diff\": $(cat ../diff-report.json), \"frontendSrcPath\": \"${FRONTEND_SRC}\"}" \
             -o ../report.json
@@ -167,7 +167,7 @@ jobs:
           echo ""
 
       - name: Post change report as PR comment
-        if: always() && env.CONTRACT_SEVERITY != '' && github.event_name == 'pull_request'
+        if: always() && (env.CONTRACT_SEVERITY == 'BREAKING' || env.CONTRACT_SEVERITY == 'DANGEROUS' || env.CONTRACT_SEVERITY == 'ADDITIVE') && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
@@ -177,6 +177,15 @@ jobs:
               report = JSON.parse(fs.readFileSync('report.json', 'utf8'));
             } catch (e) {
               console.log('report.json missing or not valid JSON — skipping comment:', e.message);
+              return;
+            }
+
+            // report.json can be valid JSON that ISN'T a ChangeReport — e.g. Spring Boot's
+            // own error body ({"status":500,"error":"Internal Server Error",...}) when the
+            // /report call itself failed. Detect that shape explicitly instead of assuming
+            // success just because JSON.parse didn't throw.
+            if (!report || !Array.isArray(report.changes)) {
+              console.log('report.json was not a valid ChangeReport (likely an upstream error) — skipping comment. Contents:', JSON.stringify(report));
               return;
             }
 
