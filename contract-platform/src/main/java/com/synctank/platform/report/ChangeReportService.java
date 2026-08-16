@@ -74,11 +74,34 @@ public class ChangeReportService {
 
         String userPrompt = "API changes detected in this pull request:\n\n" + changesBlock;
 
-        return chatClient.prompt()
-                .system(systemPrompt)
-                .user(userPrompt)
-                .call()
-                .entity(ChangeReport.class);
+        try {
+            return chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userPrompt)
+                    .call()
+                    .entity(ChangeReport.class);
+        } catch (Exception e) {
+            // AI narration is advisory only — a transient upstream failure (rate limit, retry
+            // timeout, network hiccup) should never turn into a raw 500 with no useful content.
+            // Fall back to Day 03's own deterministic classification + description, which is
+            // already decent plain English, plus the real usage-scan data we already computed above.
+            List<ChangeExplanation> fallbackChanges = diffReport.changes().stream()
+                    .map(change -> new ChangeExplanation(
+                            change.location(),
+                            change.severity().toString(),
+                            change.description(),
+                            usagesByChange.getOrDefault(change, List.of())
+                    ))
+                    .toList();
+
+            return new ChangeReport(
+                    "Automated AI narration failed this run (%s) — showing the deterministic classification directly."
+                            .formatted(e.getClass().getSimpleName()),
+                    fallbackChanges,
+                    "",
+                    List.of("AI-generated summary and migration suggestion were unavailable this run — see the diff report artifact, or re-run the pipeline.")
+            );
+        }
     }
 
     // Day 03's ChangeRecord.location() is either "OrderResponse.amount"-style (field changes) or
