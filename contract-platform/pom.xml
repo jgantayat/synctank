@@ -31,7 +31,23 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
-
+		<!-- Day 06 — Consumer Impact Radar registry persistence -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<!-- Day 06 — keeps the existing @SpringBootTest context test runnable without
+		     a live Postgres. See src/test/resources/application.yaml. -->
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
@@ -51,6 +67,11 @@
 			<groupId>org.springframework.ai</groupId>
 			<artifactId>spring-ai-starter-model-anthropic</artifactId>
 		</dependency>
+<!--		<dependency>-->
+<!--			<groupId>io.swagger.parser.v3</groupId>-->
+<!--			<artifactId>swagger-parser</artifactId>-->
+<!--			<version>2.1.22</version>-->
+<!--		</dependency>-->
 	</dependencies>
 
 	<build>

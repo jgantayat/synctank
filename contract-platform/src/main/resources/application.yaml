@@ -4,6 +4,9 @@ platform:
     bucket: specs
     access-key: platform
     secret-key: platform123
+  radar:
+    escalation-calls-per-day: ${RADAR_ESCALATION_THRESHOLD:5000}
+
 server:
   port: 8081
 
@@ -15,6 +18,20 @@ s3:
   region: ${S3_REGION:us-east-1}
 
 spring:
+  # Day 06 — client registry store. Port 5433 (not 5432) because docker-compose remaps it
+  # to avoid the Day-01 clash with a locally installed Postgres.
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/contract_platform}
+    username: ${DB_USER:platform}
+    password: ${DB_PASSWORD:platform123}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    # Hibernate manages the schema for now; Flyway lands in Phase 7 (see §2.1).
+    open-in-view: false
+    # open-in-view=false is deliberate: it means a LazyInitializationException surfaces
+    # in development rather than being silently papered over by a request-scoped session.
+    # Every association the radar reads is therefore mapped EAGER on purpose.
   ai:
     anthropic:
       api-key: ${ANTHROPIC_API_KEY}
