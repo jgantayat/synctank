@@ -3,10 +3,11 @@ package com.synctank.platform.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
-
+@Profile("!test")
 @Component
 public class BucketInitializer implements ApplicationRunner {
 

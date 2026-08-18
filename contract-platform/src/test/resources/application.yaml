@@ -1,0 +1,39 @@
+# Day 06 — NOTE: a test-classpath application.yaml REPLACES the main one entirely
+# (test-classes precede classes on the classpath); it does not merge with it.
+# So every property the context needs at startup must be repeated here.
+#
+# Without this file, `mvn test` fails two ways: no DataSource for the new JPA layer,
+# and an unresolvable ${ANTHROPIC_API_KEY} placeholder (that second failure predates
+# Day 06 — the context test has quietly required the env var since Day 05).
+
+spring:
+  profiles:
+    active: test
+  datasource:
+    url: jdbc:h2:mem:radar;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  ai:
+    anthropic:
+      api-key: test-key-never-called
+
+platform:
+  s3:
+    endpoint: http://localhost:9000
+    bucket: specs
+    access-key: test
+    secret-key: test
+  radar:
+    escalation-calls-per-day: 5000
+
+s3:
+  endpoint: http://localhost:9000
+  access-key: test
+  secret-key: test
+  bucket: specs
+  region: us-east-1
