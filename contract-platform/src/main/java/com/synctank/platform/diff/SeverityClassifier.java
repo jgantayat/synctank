@@ -107,6 +107,79 @@ public class SeverityClassifier {
         return records;
     }
 
+    /**
+     * Day 07 backlog — the rule Day 03 promised and never wrote.
+     *
+     * classifyFieldChanges() and classifyDangerousChanges() both skip a brand-new property
+     * with "handled as additive elsewhere". There was no elsewhere: a PR that only added a
+     * field produced an EMPTY change list, and DiffService's `.orElse(ADDITIVE)` made that
+     * empty result look like a verdict.
+     *
+     * Safety: FIELD_ADDED is rank 0. DiffService takes max(rank) with ADDITIVE as the empty
+     * default, so emitting extra ADDITIVE records cannot change highestSeverity on any input.
+     * REQUIRED_FIELD_ADDED is DANGEROUS and CAN raise severity — deliberately, because adding
+     * a required property to a request-body schema rejects callers that omit it.
+     */
+    public List<ChangeRecord> classifyAddedFields(OpenAPI oldApi, OpenAPI newApi) {
+        List<ChangeRecord> records = new ArrayList<>();
+
+        Map<String, Schema> oldSchemas = schemasOf(oldApi);
+        Map<String, Schema> newSchemas = schemasOf(newApi);
+
+        for (Map.Entry<String, Schema> entry : newSchemas.entrySet()) {
+            String schemaName = entry.getKey();
+            Schema<?> newSchema = entry.getValue();
+            Schema<?> oldSchema = oldSchemas.get(schemaName);
+
+            // A brand-new schema is not a field addition — it has no "before". openapi-diff
+            // reports the endpoint that carries it; duplicating it here would spam one row per
+            // property of every new model.
+            if (oldSchema == null || oldSchema.getProperties() == null || newSchema.getProperties() == null) {
+                continue;
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Schema> oldProps = oldSchema.getProperties();
+            @SuppressWarnings("unchecked")
+            Map<String, Schema> newProps = newSchema.getProperties();
+
+            List<String> newRequired = newSchema.getRequired() == null ? List.of() : newSchema.getRequired();
+            List<String> oldRequired = oldSchema.getRequired() == null ? List.of() : oldSchema.getRequired();
+
+            for (Map.Entry<String, Schema> propEntry : newProps.entrySet()) {
+                String propName = propEntry.getKey();
+                if (oldProps.containsKey(propName)) {
+                    continue;   // existed before — the other two rules own it
+                }
+
+                String location = schemaName + "." + propName;
+
+                if (newRequired.contains(propName) && !oldRequired.contains(propName)) {
+                    records.add(new ChangeRecord(
+                            Severity.DANGEROUS,
+                            "REQUIRED_FIELD_ADDED",
+                            location,
+                            "'" + location + "' was added as a REQUIRED property of type "
+                                    + describe(propEntry.getValue()) + ". If this schema is used as a "
+                                    + "request body, callers that omit it will now be rejected."
+                    ));
+                } else {
+                    records.add(new ChangeRecord(
+                            Severity.ADDITIVE,
+                            "FIELD_ADDED",
+                            location,
+                            "'" + location + "' was added as an optional property of type "
+                                    + describe(propEntry.getValue())
+                                    + " — existing consumers are unaffected; the generated TypeScript "
+                                    + "gains the field and nothing breaks."
+                    ));
+                }
+            }
+        }
+
+        return records;
+    }
+
     public List<ChangeRecord> classifyDangerousChanges(OpenAPI oldApi, OpenAPI newApi) {
         List<ChangeRecord> records = new ArrayList<>();
 

@@ -21,7 +21,38 @@ class SeverityClassifierTest {
 
         assertThat(report.changed()).isTrue();
         assertThat(report.highestSeverity()).isEqualTo(Severity.ADDITIVE);
-        assertThat(categoriesOf(report)).contains("ENDPOINT_ADDED");
+        // The fixture has always added OrderResponse.note; until this fix nothing classified it.
+        assertThat(categoriesOf(report)).contains("ENDPOINT_ADDED", "FIELD_ADDED");
+    }
+
+    @Test
+    void addedOptionalFieldIsAdditiveAndNamedByLocation() throws IOException {
+        DiffReport report = diffFixtures("additive-before.json", "additive-after.json");
+
+        ChangeRecord added = report.changes().stream()
+                .filter(c -> "FIELD_ADDED".equals(c.category()))
+                .findFirst().orElseThrow();
+
+        assertThat(added.location()).isEqualTo("OrderResponse.note");
+        assertThat(added.severity()).isEqualTo(Severity.ADDITIVE);
+    }
+
+    @Test
+    void addedRequiredFieldIsDangerousNotAdditive() throws IOException {
+        DiffReport report = diffFixtures("required-add-before.json", "required-add-after.json");
+
+        assertThat(report.highestSeverity()).isEqualTo(Severity.DANGEROUS);
+        assertThat(categoriesOf(report)).contains("REQUIRED_FIELD_ADDED");
+    }
+
+    @Test
+    void brandNewSchemaDoesNotProduceOneRowPerProperty() throws IOException {
+        // breaking-after.json introduces Money wholesale. Its properties must NOT each become
+        // a FIELD_ADDED row — the endpoint-level change already says what a reviewer needs.
+        DiffReport report = diffFixtures("breaking-before.json", "breaking-after.json");
+
+        assertThat(report.changes()).noneMatch(c -> c.location().startsWith("Money."));
+        assertThat(report.highestSeverity()).isEqualTo(Severity.BREAKING);
     }
 
     @Test
@@ -29,8 +60,7 @@ class SeverityClassifierTest {
         DiffReport report = diffFixtures("breaking-before.json", "breaking-after.json");
 
         assertThat(report.highestSeverity()).isEqualTo(Severity.BREAKING);
-        assertThat(categoriesOf(report))
-                .contains("ENDPOINT_REMOVED", "FIELD_REMOVED", "FIELD_TYPE_CHANGED");
+        assertThat(categoriesOf(report)).contains("ENDPOINT_REMOVED", "FIELD_REMOVED", "FIELD_TYPE_CHANGED");
     }
 
     @Test
@@ -38,8 +68,7 @@ class SeverityClassifierTest {
         DiffReport report = diffFixtures("dangerous-before.json", "dangerous-after.json");
 
         assertThat(report.highestSeverity()).isEqualTo(Severity.DANGEROUS);
-        assertThat(categoriesOf(report))
-                .contains("NULLABILITY_FLIP", "ENUM_NARROWED", "VALIDATION_TIGHTENED");
+        assertThat(categoriesOf(report)).contains("NULLABILITY_FLIP", "ENUM_NARROWED", "VALIDATION_TIGHTENED");
     }
 
     private DiffReport diffFixtures(String beforeFile, String afterFile) throws IOException {

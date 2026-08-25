@@ -1,0 +1,22 @@
+{
+  "openapi": "3.0.1",
+  "info": {"title": "Orders API", "version": "1.0"},
+  "paths": {
+    "/api/orders": {
+      "post": {
+        "operationId": "createOrder",
+        "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateOrderRequest"}}}},
+        "responses": {"200": {"description": "OK"}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateOrderRequest": {
+        "type": "object",
+        "properties": {"customerName": {"type": "string"}, "amount": {"type": "number"}},
+        "required": ["customerName"]
+      }
+    }
+  }
+}
