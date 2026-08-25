@@ -101,13 +101,20 @@ public class ImpactRadarService {
                 verdict = "Breaking on paper, but no registered client compiles against '"
                         + change.location() + "'. Downgraded to SAFE_WITH_NOTE — the merge is "
                         + "unblocked, the change is still recorded.";
+            } else if (classified == Severity.ADDITIVE) {
+                // An added field cannot break a consumer that never compiled against it — the
+                // field did not exist in the deployed contract. This branch exists only because
+                // the FIELD_ADDED fix now routes additive changes through the radar at all.
+                effective = EffectiveSeverity.ADDITIVE;
+                verdict = "No consumer can be affected: '" + change.location()
+                        + "' did not exist in the deployed contract, so nothing compiles against it yet.";
             } else {
-                // Deliberately NOT downgraded. A DANGEROUS change is a runtime hazard the type
-                // system cannot see; the registry is known to be incomplete (unmapped consumers),
+                // DANGEROUS with no known consumer: deliberately NOT downgraded. It is a runtime
+                // hazard the type system cannot see, and the registry is known to be incomplete,
                 // so its silence is not evidence of safety. See §2.5 of the Day 06 guide.
                 effective = map(classified);
                 verdict = "No registered consumer found for '" + change.location()
-                        + "'. Severity left unchanged — a " + classified
+                        + "'. Severity left unchanged — this " + classified
                         + " change can still affect unmapped consumers at runtime.";
             }
         } else if (classified == Severity.DANGEROUS && totalCalls >= escalationThreshold) {

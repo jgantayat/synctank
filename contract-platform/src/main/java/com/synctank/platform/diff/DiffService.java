@@ -24,6 +24,8 @@ public class DiffService {
         List<ChangeRecord> records = new ArrayList<>();
         records.addAll(classifier.classifyStructuralChanges(changed));
         records.addAll(classifier.classifyFieldChanges(changed.getOldSpecOpenApi(), changed.getNewSpecOpenApi()));
+        // Day 07 backlog — added fields were silently dropped until now. Cannot raise highestSeverity.
+        records.addAll(classifier.classifyAddedFields(changed.getOldSpecOpenApi(), changed.getNewSpecOpenApi()));
         records.addAll(classifier.classifyDangerousChanges(changed.getOldSpecOpenApi(), changed.getNewSpecOpenApi()));
 
         Severity highest = records.stream()
