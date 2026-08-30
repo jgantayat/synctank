@@ -6,6 +6,23 @@ platform:
     secret-key: platform123
   radar:
     escalation-calls-per-day: ${RADAR_ESCALATION_THRESHOLD:5000}
+  # Day 07 — Contract Agent (Phase 6). Every guardrail that is configuration lives here.
+  agent:
+    enabled: ${AGENT_ENABLED:true}
+    github-api: https://api.github.com
+    repo-owner: jgantayat
+    repo-name: synctank
+    # NEVER written to. GitHubClient hard-refuses a commit targeting this branch.
+    base-branch: main
+    branch-prefix: agent/
+    source-dir: orders-backend/src/main/java/com/synctank/orders/api
+    allowed-path-prefix: orders-backend/src/main/java/com/synctank/orders/api/
+    spec-repo-key: orders-backend
+    # Blank default is deliberate. Day 05's lesson: an unresolvable ${PLACEHOLDER} with no
+    # default fails context startup, which made `mvn test` fail for a reason unrelated to the
+    # test. Blank here means draft-only: drafts work, /approve returns 409.
+    github-token: ${GITHUB_TOKEN:}
+    dashboard-origins: ${AGENT_DASHBOARD_ORIGINS:http://localhost:4200}
 
 server:
   port: 8081
@@ -18,8 +35,8 @@ s3:
   region: ${S3_REGION:us-east-1}
 
 spring:
-  # Day 06 — client registry store. Port 5433 (not 5432) because docker-compose remaps it
-  # to avoid the Day-01 clash with a locally installed Postgres.
+  # Day 06 — client registry store. Port 5433 (not 5432): docker-compose remaps it to avoid
+  # the Day-01 clash with a locally installed Postgres.
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5433/contract_platform}
     username: ${DB_USER:platform}
@@ -27,11 +44,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    # Hibernate manages the schema for now; Flyway lands in Phase 7 (see §2.1).
+    # Hibernate manages the schema for now; Flyway lands in Phase 7 (Day 06 §2.1).
     open-in-view: false
-    # open-in-view=false is deliberate: it means a LazyInitializationException surfaces
-    # in development rather than being silently papered over by a request-scoped session.
-    # Every association the radar reads is therefore mapped EAGER on purpose.
+    # open-in-view=false is deliberate: a LazyInitializationException surfaces in development
+    # rather than being papered over by a request-scoped session. Every association the radar
+    # reads is therefore mapped EAGER on purpose.
   ai:
     anthropic:
       api-key: ${ANTHROPIC_API_KEY}
