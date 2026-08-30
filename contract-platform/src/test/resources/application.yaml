@@ -1,10 +1,13 @@
 # Day 06 — NOTE: a test-classpath application.yaml REPLACES the main one entirely
 # (test-classes precede classes on the classpath); it does not merge with it.
-# So every property the context needs at startup must be repeated here.
+# Every property the context needs at startup must be repeated here.
 #
-# Without this file, `mvn test` fails two ways: no DataSource for the new JPA layer,
-# and an unresolvable ${ANTHROPIC_API_KEY} placeholder (that second failure predates
-# Day 06 — the context test has quietly required the env var since Day 05).
+# Without this file, `mvn test` fails two ways: no DataSource for the JPA layer, and an
+# unresolvable ${ANTHROPIC_API_KEY} placeholder (that one predates Day 06 — the context test
+# has quietly required the env var since Day 05).
+#
+# Day 07 adds platform.agent for the same reason. enabled:false and a blank token mean a
+# stray @SpringBootTest can never reach api.github.com.
 
 spring:
   profiles:
@@ -30,6 +33,18 @@ platform:
     secret-key: test
   radar:
     escalation-calls-per-day: 5000
+  agent:
+    enabled: false
+    github-api: https://api.github.com
+    repo-owner: test-owner
+    repo-name: test-repo
+    base-branch: main
+    branch-prefix: agent/
+    source-dir: orders-backend/src/main/java/com/synctank/orders/api
+    allowed-path-prefix: orders-backend/src/main/java/com/synctank/orders/api/
+    spec-repo-key: orders-backend
+    github-token: ""
+    dashboard-origins: http://localhost:4200
 
 s3:
   endpoint: http://localhost:9000

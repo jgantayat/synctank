@@ -1,0 +1,92 @@
+<section class="agent">
+  <header>
+    <h2>Contract Agent</h2>
+    @if (status(); as s) {
+      <p class="meta">
+        {{ s.repository }} · base <code>{{ s.baseBranch }}</code> ·
+        {{ s.canOpenPullRequests ? 'can open pull requests' : 'draft-only (no token configured)' }}
+      </p>
+    }
+  </header>
+
+  <label for="req">What do you need on the contract?</label>
+  <textarea id="req" rows="3" [(ngModel)]="requestText" name="req"></textarea>
+
+  <div class="actions">
+    <button (click)="submit()" [disabled]="busy()">
+      {{ busy() ? 'Drafting…' : 'Draft change' }}
+    </button>
+  </div>
+
+  @if (error(); as e) {
+    <p class="error">{{ e }}</p>
+  }
+
+  @if (draft(); as d) {
+    @if (d.status === 'BLOCKED') {
+      <div class="blocked">
+        <strong>Refused by a guardrail.</strong>
+        <p>{{ d.blockedReason }}</p>
+      </div>
+    }
+
+    @if (d.proposal; as p) {
+      <div class="proposal">
+        <h3>Proposed change</h3>
+        <p><code>{{ p.targetSchema }}.{{ p.fieldName }}</code> &nbsp;·&nbsp; type
+          <code>{{ p.javaType }}</code> &nbsp;·&nbsp; confidence {{ p.confidence }}</p>
+        <p class="rationale">{{ p.rationale }}</p>
+      </div>
+    }
+
+    @for (edit of d.fileEdits; track edit.path) {
+      <div class="edit">
+        <h4>{{ edit.path }}</h4>
+        <pre>{{ edit.unifiedDiff }}</pre>
+      </div>
+    }
+
+    @if (d.impact; as impact) {
+      <div class="impact">
+        <h3>
+          Impact preview —
+          classified <strong>{{ impact.highestSeverity }}</strong>,
+          effective <strong>{{ impact.effectiveSeverity }}</strong>
+        </h3>
+        @for (a of impact.impact; track a.location) {
+          <p><code>{{ a.location }}</code> — {{ a.verdict }}</p>
+          @for (c of a.consumers; track c.appName) {
+            <p class="consumer">
+              {{ c.appName }} ({{ c.team }}) — screens {{ c.screens.join(', ') || 'unmapped' }},
+              ~{{ c.callsPerDay }} calls/day
+            </p>
+          }
+        }
+        <p class="footnote">
+          Preview is projected from the published baseline. CI regenerates the authoritative
+          spec on the pull request. Call volumes are seeded demo telemetry.
+        </p>
+      </div>
+    }
+
+    <details class="guardrails">
+      <summary>Guardrails that ran ({{ d.guardrails.length }})</summary>
+      <ul>
+        @for (g of d.guardrails; track g) { <li>{{ g }}</li> }
+      </ul>
+    </details>
+
+    @if (canApprove()) {
+      <div class="actions">
+        <button class="primary" (click)="approve()" [disabled]="busy()">
+          {{ busy() ? 'Opening pull request…' : 'Approve — open backend PR' }}
+        </button>
+        <button (click)="reject()" [disabled]="busy()">Reject</button>
+      </div>
+    }
+
+    @if (d.prUrl; as url) {
+      <p class="pr">Pull request opened: <a [href]="url" target="_blank" rel="noopener">{{ url }}</a></p>
+    }
+  }
+</section>

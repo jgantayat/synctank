@@ -1,0 +1,22 @@
+.agent {
+  font-family: Inter, system-ui, sans-serif;
+  max-width: 860px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  border: 1px solid #e3e3ea;
+  border-radius: 12px;
+}
+.agent h2 { margin: 0 0 .25rem; }
+.meta { margin: 0 0 1rem; color: #6b6b78; font-size: .85rem; }
+textarea { width: 100%; padding: .6rem; font: inherit; border: 1px solid #cfcfda; border-radius: 8px; }
+.actions { margin: .75rem 0; display: flex; gap: .5rem; }
+button { padding: .5rem 1rem; border-radius: 8px; border: 1px solid #cfcfda; background: #fff; cursor: pointer; }
+button.primary { background: #1b1b2f; color: #fff; border-color: #1b1b2f; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+pre { background: #f7f7fb; padding: .75rem; border-radius: 8px; overflow-x: auto; font-size: .8rem; }
+.blocked { background: #fff4f4; border-left: 3px solid #d33; padding: .75rem 1rem; border-radius: 6px; }
+.impact { background: #f4f8ff; padding: .75rem 1rem; border-radius: 8px; }
+.consumer { margin: .15rem 0 .15rem 1rem; font-size: .9rem; }
+.rationale, .footnote { color: #6b6b78; font-size: .85rem; }
+.error { color: #b00020; }
+.pr a { word-break: break-all; }
