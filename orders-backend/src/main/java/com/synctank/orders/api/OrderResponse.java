@@ -6,5 +6,6 @@ public record OrderResponse(
         Long id,
         String customerName,
         @Schema(minimum = "0") double amount,
-        @Schema(allowableValues = {"PENDING", "SHIPPED", "DELIVERED", "CANCELLED"}) String status
+        @Schema(allowableValues = {"PENDING", "SHIPPED", "DELIVERED", "CANCELLED"}) String status,
+        String customerEmail
 ) {}
