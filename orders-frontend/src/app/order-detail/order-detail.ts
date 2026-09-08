@@ -1,4 +1,3 @@
-
 import { Component, OnInit, signal } from '@angular/core';
 import { OrderControllerService, OrderResponse } from '../generated';
 
@@ -9,22 +8,23 @@ import { OrderControllerService, OrderResponse } from '../generated';
   styleUrl: './order-detail.css',
 })
 export class OrderDetail implements OnInit {
-  // A signal, not a plain field — Angular 21 apps are zoneless by default, so a
-  // plain `this.order = order` inside .subscribe() isn't guaranteed to trigger a
-  // re-render. Writing to a signal notifies the template correctly either way.
   order = signal<OrderResponse | undefined>(undefined);
+
+  // Day 08: added alongside the error handler below. Without this the panel renders
+  // an empty DOM node on any failure -- see the CORS analysis; a blank panel is
+  // indistinguishable from "still loading" during a live demo.
+  error = signal<string | null>(null);
 
   constructor(private orderApi: OrderControllerService) {}
 
   ngOnInit(): void {
-     this.orderApi.getOrder({ id: 1 }).subscribe((order) => {
-      this.order.set(order);
+    this.orderApi.getOrder({ id: 1 }).subscribe({
+      next: (order) => this.order.set(order),
+      error: () => this.error.set('Could not reach orders-backend on :8080.'),
     });
   }
 
-  // Deliberately touches `.amount` directly in the .ts file — this is the exact
-  // line that will fail to compile in Phase 5, matching your doc's own demo script.
   get formattedAmount(): string {
     return `$${this.order()?.amount?.toFixed(2) ?? '0.00'}`;
   }
-} 
+}

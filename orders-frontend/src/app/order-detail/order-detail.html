@@ -1,8 +1,28 @@
-@if (order(); as currentOrder) {
-  <div>
-    <h2>Order #{{ currentOrder.id }}</h2>
-    <p>Customer: {{ currentOrder.customerName }}</p>
-    <p>Amount: {{ formattedAmount }}</p>
-    <p>Status: {{ currentOrder.status }}</p>
-  </div>
-}
+<section class="order">
+  <h2>Order Detail</h2>
+  <p class="meta">Live from orders-backend · <code>GET /api/orders/1</code></p>
+
+  @if (order(); as currentOrder) {
+    <div class="card">
+      <div class="headline">
+        <span class="id">Order #{{ currentOrder.id }}</span>
+        <span [class]="'pill pill-' + (currentOrder.status ?? 'unknown').toLowerCase()">
+          {{ currentOrder.status }}
+        </span>
+      </div>
+
+      <dl class="fields">
+        <div class="field">
+          <dt>Customer</dt>
+          <dd>{{ currentOrder.customerName }}</dd>
+        </div>
+        <div class="field">
+          <dt>Amount</dt>
+          <dd class="amount">{{ formattedAmount }}</dd>
+        </div>
+      </dl>
+    </div>
+  } @else {
+    <p class="empty">{{ error() ?? 'Loading order…' }}</p>
+  }
+</section>
