@@ -1,0 +1,65 @@
+/* Day 08: this file was empty, so the panel rendered unstyled and full-bleed in the
+   browser's default serif while Dashboard and ContractAgent rendered as cards. Same
+   shell dimensions as .dash and .agent so the three panels read as one product. */
+.order {
+  font-family: Inter, system-ui, sans-serif;
+  max-width: 860px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  border: 1px solid #e3e3ea;
+  border-radius: 12px;
+}
+.order h2 { margin: 0 0 .25rem; }
+.meta { margin: 0 0 1rem; color: #6b6b78; font-size: .85rem; }
+.meta code {
+  background: #ececf2;
+  padding: .05rem .3rem;
+  border-radius: 4px;
+  font-size: .8rem;
+}
+
+.card { background: #f7f7fb; border-radius: 10px; padding: 1rem 1.1rem; }
+
+.headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .9rem;
+}
+.id { font-size: 1.15rem; font-weight: 600; color: #1b1b2f; }
+
+.pill {
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: .2rem .55rem;
+  border-radius: 999px;
+  background: #ececf2;
+  color: #4a4a5e;
+}
+.pill-shipped   { background: #e2eefc; color: #1b4f9c; }
+.pill-pending   { background: #fdf1dd; color: #8a5a12; }
+.pill-delivered { background: #e3f4ec; color: #14683f; }
+.pill-cancelled { background: #fdeaea; color: #a32020; }
+
+.fields { display: flex; flex-wrap: wrap; gap: 1.75rem; margin: 0; }
+.field { display: flex; flex-direction: column; }
+.fields dt {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: #6b6b78;
+  margin-bottom: .15rem;
+}
+.fields dd { margin: 0; font-size: .95rem; color: #1b1b2f; }
+.amount { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.empty {
+  background: #f7f7fb;
+  padding: .75rem 1rem;
+  border-radius: 8px;
+  font-size: .85rem;
+  color: #6b6b78;
+}
