@@ -32,7 +32,20 @@ public class DashboardCorsConfig implements WebMvcConfigurer {
                 .allowedOrigins(origins)
                 .allowedMethods("GET", "POST", "OPTIONS")
                 .allowedHeaders("*");
+
         registry.addMapping("/registry/**")
+                .allowedOrigins(origins)
+                .allowedMethods("GET", "OPTIONS")
+                .allowedHeaders("*");
+
+        // Day 08 -- the spec timeline needs to read version history from a browser.
+        //
+        // Deliberately NOT /specs/**: that would also expose PUT /specs/{repo}/{commit} and
+        // PUT /specs/{repo}/baseline, making the published contract baseline overwritable
+        // from any page served on an allowed origin. The single star matches exactly one
+        // path segment, so this covers /specs/orders-backend/history and nothing else,
+        // and GET-only means the write routes stay unreachable even on that path.
+        registry.addMapping("/specs/*/history")
                 .allowedOrigins(origins)
                 .allowedMethods("GET", "OPTIONS")
                 .allowedHeaders("*");

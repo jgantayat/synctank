@@ -6,10 +6,7 @@ import org.openapitools.openapidiff.core.model.ChangedOpenApi;
 import org.openapitools.openapidiff.core.model.Endpoint;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 public class SeverityClassifier {
@@ -216,8 +213,8 @@ public class SeverityClassifier {
     }
 
     private List<ChangeRecord> nullabilityFlip(String location, Schema<?> oldProp, Schema<?> newProp) {
-        boolean oldNullable = Boolean.TRUE.equals(oldProp.getNullable());
-        boolean newNullable = Boolean.TRUE.equals(newProp.getNullable());
+        boolean oldNullable = isNullable(oldProp);
+        boolean newNullable = isNullable(newProp);
         if (!oldNullable && newNullable) {
             return List.of(new ChangeRecord(
                     Severity.DANGEROUS,
@@ -308,20 +305,50 @@ public class SeverityClassifier {
     /**
      * Swagger-core 2.2.x represents a schema's type differently depending on which OpenAPI
      * version the source document declares. OpenAPI 3.0 documents populate the legacy
-     * singular getType(). OpenAPI 3.1 documents — which springdoc now generates by default —
-     * populate a different field, getTypes() (a Set<String>), leaving getType() null even for
-     * an ordinary single-type schema like {"type": "string"}. Check both, so classification is
-     * correct regardless of which OpenAPI version the spec declares.
+     * singular getType(). OpenAPI 3.1 documents -- which springdoc now generates by default --
+     * populate getTypes() (a Set<String>), leaving getType() null even for an ordinary
+     * single-type schema like {"type": "string"}. Check both.
+     *
+     * Day 08: a 3.1 nullable field is the UNION {"string","null"}, and taking the set's first
+     * element could yield "null". typeSignature() would then see string -> null and
+     * classifyFieldChanges would report a BREAKING FIELD_TYPE_CHANGED -- failing CI on a
+     * change that is merely DANGEROUS, under the wrong rule, with a description reading
+     * "changed from string to null". Filter the null member out; isNullable() owns it.
+     *
      * See: https://github.com/swagger-api/swagger-core/wiki/Swagger-2.X---OpenAPI-3.1
      */
     private String effectiveType(Schema<?> schema) {
         if (schema.getType() != null) {
             return schema.getType();
         }
-        if (schema.getTypes() != null && !schema.getTypes().isEmpty()) {
-            return schema.getTypes().iterator().next();
+        Set<String> types = schema.getTypes();
+        if (types != null && !types.isEmpty()) {
+            return types.stream()
+                    .filter(t -> !"null".equals(t))
+                    .findFirst()
+                    .orElse("null");   // a schema typed ONLY as null -- degenerate but legal
         }
         return "unknown";
+    }
+
+    /**
+     * Day 08 -- nullability, in both OpenAPI dialects.
+     *
+     * OpenAPI 3.0 spells it `nullable: true`, which swagger-core exposes as getNullable().
+     * OpenAPI 3.1 removed that keyword; the same idea is a type union, `"type": ["string",
+     * "null"]`, which lands in getTypes() and leaves getNullable() null.
+     *
+     * springdoc emits 3.1, so before this method the NULLABILITY_FLIP rule could never fire
+     * on a real pipeline spec. The DANGEROUS tests passed only because their fixtures are
+     * hand-written 3.0.1 documents. Same shape of bug as the getTypes() discovery on Day 03,
+     * in the same file -- check the dialect the pipeline emits, not the one the tests feed it.
+     */
+    private boolean isNullable(Schema<?> schema) {
+        if (Boolean.TRUE.equals(schema.getNullable())) {
+            return true;                                   // OpenAPI 3.0
+        }
+        Set<String> types = schema.getTypes();
+        return types != null && types.contains("null");    // OpenAPI 3.1
     }
 
     @SuppressWarnings("unchecked")

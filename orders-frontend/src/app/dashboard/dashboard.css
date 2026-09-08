@@ -1,0 +1,38 @@
+.dash {
+  font-family: Inter, system-ui, sans-serif;
+  max-width: 860px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  border: 1px solid #e3e3ea;
+  border-radius: 12px;
+}
+.dash h2 { margin: 0 0 .25rem; }
+.dash h3 { margin: 1.75rem 0 .5rem; font-size: 1rem; }
+.meta { margin: 0 0 1rem; color: #6b6b78; font-size: .85rem; }
+.note { margin: 0 0 .75rem; color: #6b6b78; font-size: .85rem; }
+
+.tiles { display: flex; flex-wrap: wrap; gap: .75rem; }
+.tile {
+  flex: 1 1 130px;
+  background: #f7f7fb;
+  border-radius: 10px;
+  padding: .75rem .9rem;
+  display: flex;
+  flex-direction: column;
+}
+.figure { font-size: 1.6rem; font-weight: 600; color: #1b1b2f; line-height: 1.1; }
+.label { font-size: .75rem; color: #6b6b78; margin-top: .2rem; }
+
+/* Chart.js needs a sized parent: responsive + maintainAspectRatio:false means the
+   canvas fills its container, and a container with no height collapses to zero. */
+.chart { height: 260px; margin: .5rem 0 1rem; }
+
+.grid { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.grid th, .grid td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid #ececf2; }
+.grid th { color: #6b6b78; font-weight: 600; }
+.grid .num { text-align: right; }
+
+.empty { background: #f7f7fb; padding: .75rem 1rem; border-radius: 8px; font-size: .85rem; color: #6b6b78; }
+.empty code, .note code { background: #ececf2; padding: .05rem .3rem; border-radius: 4px; font-size: .8rem; }
+.footnote { color: #6b6b78; font-size: .8rem; margin-top: 1.25rem; }
+.error { color: #b00020; }

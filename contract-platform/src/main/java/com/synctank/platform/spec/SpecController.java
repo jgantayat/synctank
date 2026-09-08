@@ -5,6 +5,8 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/specs")
 public class SpecController {
@@ -36,5 +38,18 @@ public class SpecController {
     @GetMapping(value = "/{repo}/baseline", produces = MediaType.APPLICATION_JSON_VALUE)
     public String baseline(@PathVariable String repo) {
         return store.getBaselineSpec(repo);
+    }
+
+    /**
+     * Day 08 -- the spec timeline's data source.
+     *
+     * GET rather than POST, and read-only: this is the only route under /specs that
+     * DashboardCorsConfig exposes to a browser. See Decision 5.
+     */
+    @GetMapping(value = "/{repo}/history", produces = MediaType.APPLICATION_JSON_VALUE)
+    public List<SpecStore.SpecVersion> history(
+            @PathVariable String repo,
+            @RequestParam(defaultValue = "25") int limit) {
+        return store.listVersions(repo, limit);
     }
 }
