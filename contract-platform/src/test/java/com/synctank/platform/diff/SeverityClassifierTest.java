@@ -71,6 +71,29 @@ class SeverityClassifierTest {
         assertThat(categoriesOf(report)).contains("NULLABILITY_FLIP", "ENUM_NARROWED", "VALIDATION_TIGHTENED");
     }
 
+    @Test
+    void nullabilityFlipIsDetectedInOpenApi31TypeUnions() throws IOException {
+        // The 3.0 fixtures cover `nullable: true`. This is the dialect springdoc ACTUALLY
+        // emits: {"type": ["string", "null"]}. Before Day 08 this produced no DANGEROUS
+        // record at all -- the rule was dead against every real spec the pipeline made.
+        DiffReport report = diffFixtures("dangerous31-before.json", "dangerous31-after.json");
+
+        assertThat(categoriesOf(report)).contains("NULLABILITY_FLIP");
+        assertThat(report.highestSeverity()).isEqualTo(Severity.DANGEROUS);
+    }
+
+    @Test
+    void nullableUnionIsNotMistakenForABreakingTypeChange() throws IOException {
+        // The second half of the bug: taking the first element of {"string","null"} could
+        // yield "null", making the type signature change from "string" to "null" and
+        // classifying a merely-dangerous change as BREAKING -- which FAILS the CI gate.
+        DiffReport report = diffFixtures("dangerous31-before.json", "dangerous31-after.json");
+
+        assertThat(categoriesOf(report)).doesNotContain("FIELD_TYPE_CHANGED");
+        assertThat(report.changes())
+                .noneMatch(c -> c.severity() == Severity.BREAKING);
+    }
+
     private DiffReport diffFixtures(String beforeFile, String afterFile) throws IOException {
         return diffService.diff(readFixture(beforeFile), readFixture(afterFile));
     }

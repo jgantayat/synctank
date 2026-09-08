@@ -1,0 +1,93 @@
+<section class="dash">
+  <h2>Contract Dashboard</h2>
+  <p class="meta">
+    Spec history, registered consumers and endpoint traffic, read live from contract-platform.
+  </p>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  <!-- summary tiles -->
+  <div class="tiles">
+    <div class="tile">
+      <span class="figure">{{ versionCount() }}</span>
+      <span class="label">spec versions stored</span>
+    </div>
+    <div class="tile">
+      <span class="figure">{{ currentEndpoints() }}</span>
+      <span class="label">endpoints in current contract</span>
+    </div>
+    <div class="tile">
+      <span class="figure">{{ currentSchemas() }}</span>
+      <span class="label">schemas in current contract</span>
+    </div>
+    <div class="tile">
+      <span class="figure">{{ totalCalls().toLocaleString() }}</span>
+      <span class="label">calls/day mapped (seeded)</span>
+    </div>
+    <div class="tile">
+      <span class="figure">{{ prCount() }}</span>
+      <span class="label">agent PRs opened</span>
+    </div>
+  </div>
+
+  <!-- spec timeline -->
+  <h3>Contract history</h3>
+  <p class="note">
+    Baseline: <code>{{ baselineCommit() }}</code> — the version every pull request is diffed against.
+  </p>
+  @if (specHistory().length) {
+    <div class="chart"><canvas #specCanvas></canvas></div>
+  } @else {
+    <p class="empty">
+      No spec versions stored yet. Run the pipeline, or upload one:
+      <code>PUT /specs/orders-backend/{{ '{' }}commit{{ '}' }}</code>.
+    </p>
+  }
+
+  <!-- consumers -->
+  <h3>Registered consumers</h3>
+  @if (apps().length) {
+    <div class="chart"><canvas #consumerCanvas></canvas></div>
+    <table class="grid">
+      <thead>
+        <tr>
+          <th>App</th><th>Team</th><th>Screens</th>
+          <th class="num">Use sites</th><th class="num">Calls/day</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (app of apps(); track app.appName) {
+          <tr>
+            <td>{{ app.appName }}</td>
+            <td>{{ app.team || '—' }}</td>
+            <td>{{ app.screens.length ? app.screens.join(', ') : 'unmapped' }}</td>
+            <td class="num">{{ app.usageRows }}</td>
+            <td class="num">{{ app.totalCallsPerDay.toLocaleString() }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  } @else {
+    <p class="empty">
+      No consumer registered. Seed one with <code>POST /registry/apps</code> —
+      CI does this on every run.
+    </p>
+  }
+
+  <!-- traffic -->
+  <h3>Endpoint traffic</h3>
+  @if (traffic().length) {
+    <div class="chart"><canvas #trafficCanvas></canvas></div>
+  } @else {
+    <p class="empty">No traffic recorded. Seed it with
+      <code>PUT /registry/apps/{{ '{' }}app{{ '}' }}/traffic</code>.</p>
+  }
+
+  <p class="footnote">
+    Call volumes are seeded demo telemetry, not live measurements — Phase 5's usage
+    interceptor is deliberately not built. Compile-time consumer mapping is real: it is
+    derived from the published baseline spec on every CI run.
+  </p>
+</section>

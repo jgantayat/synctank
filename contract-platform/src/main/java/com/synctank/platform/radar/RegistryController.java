@@ -7,7 +7,8 @@ import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -62,6 +63,28 @@ public class RegistryController {
         }).toList();
     }
 
+    /**
+     * Day 08 -- per-endpoint call volumes, the numbers behind AppSummary.totalCallsPerDay.
+     *
+     * CI seeds these through PUT /registry/apps/{app}/traffic and ImpactRadarService reads
+     * them when weighting severity, but until today nothing could read them back, so the
+     * one figure the pitch says out loud ("~12K calls/day") had nowhere to live in the UI.
+     *
+     * SEEDED, NOT MEASURED -- see the comment on EndpointTraffic. The dashboard repeats that
+     * caveat on screen; do not present these as live telemetry.
+     */
+    public record TrafficRow(String appName, String team, String location,
+                             long callsPerDay, Instant lastCalledAt) {}
+
+    @GetMapping(value = "/traffic", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Transactional(readOnly = true)
+    public List<TrafficRow> traffic() {
+        return trafficRepo.findAll().stream()
+                .sorted(Comparator.comparingLong(EndpointTraffic::getCallsPerDay).reversed())
+                .map(t -> new TrafficRow(t.getApp().getAppName(), t.getApp().getTeam(),
+                        t.getLocation(), t.getCallsPerDay(), t.getLastCalledAt()))
+                .toList();
+    }
     /**
      * Seed runtime call volumes. Body is endpoint location -> calls/day, e.g.
      *   {"GET /api/orders/{id}": 12000}
