@@ -22,6 +22,26 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
 
+  # ---------- Day 09 — AWS Secrets Manager, locally ----------
+  # LocalStack is to Secrets Manager what MinIO is to S3: the real AWS SDK, the real API calls,
+  # a local endpoint. The whole secrets mechanism can be built, verified and demonstrated with
+  # no AWS account and no spend; Day 11 changes one property (SECRETS_ENDPOINT) to point at the
+  # real service, and nothing else moves.
+  #
+  # The named volume matters — without it the secret disappears on every `docker compose down`
+  # and has to be recreated before each session.
+  localstack:
+    image: localstack/localstack:3
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: secretsmanager
+      AWS_DEFAULT_REGION: us-east-1
+      PERSISTENCE: "1"
+    volumes:
+      - localstack-data:/var/lib/localstack
+
 volumes:
   minio-data:
   pg-data:
+  localstack-data:

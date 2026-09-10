@@ -1,3 +1,25 @@
 .claude/
 skills-lock.json
 CLAUDE.md
+
+# ---------- Day 09 — credential material never belongs in this repository ----------
+# The platform's credentials now live in AWS Secrets Manager. Anything below is a local
+# convenience file that would quietly undo that.
+.env
+.env.*
+*.env
+secrets.json
+secrets.local.json
+application-local.yaml
+application-local.yml
+*-local.yaml
+*-local.yml
+.aws/
+*.pem
+*.p12
+id_rsa*
+
+# IDE and OS noise
+.idea/
+*.iml
+.DS_Store
