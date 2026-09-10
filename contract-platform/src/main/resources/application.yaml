@@ -1,11 +1,34 @@
 platform:
+  # ---------- Day 09 — secrets ----------
+  # provider=env : credentials come from environment variables and the defaults below. Nothing
+  #                is fetched, no AWS call is made, behaviour is byte-identical to Day 08. This
+  #                is what CI runs, and what any machine without AWS access runs.
+  # provider=aws : one JSON secret is read from AWS Secrets Manager before any bean is created,
+  #                and its values override everything below. A failure here fails startup —
+  #                booting on the defaults would defeat the point.
+  secrets:
+    provider: ${SECRETS_PROVIDER:env}
+    secret-id: ${SECRETS_ID:synctank/platform}
+    region: ${AWS_REGION:us-east-1}
+    # Blank against real AWS. Point at LocalStack (http://localhost:4566) to rehearse the whole
+    # mechanism with no AWS account — the same trick MinIO plays for S3.
+    endpoint: ${SECRETS_ENDPOINT:}
+
+  # ---------- Day 09 (F1) — ONE S3 tree ----------
+  # There used to be a second, top-level `s3:` block. S3Config and BucketInitializer read that
+  # one; SpecStore read this one, and only its bucket. The credentials here were dead — editing
+  # them changed nothing — and the two bucket names could diverge the moment S3_BUCKET was set.
+  # Env-var names are unchanged so .github/workflows/contract.yml needs no edit.
   s3:
-    endpoint: http://localhost:9000
-    bucket: specs
-    access-key: platform
-    secret-key: platform123
+    endpoint: ${S3_ENDPOINT:http://localhost:9000}
+    bucket: ${S3_BUCKET:specs}
+    region: ${S3_REGION:us-east-1}
+    access-key: ${S3_ACCESS_KEY:platform}
+    secret-key: ${S3_SECRET_KEY:platform123}
+
   radar:
     escalation-calls-per-day: ${RADAR_ESCALATION_THRESHOLD:5000}
+
   # Day 07 — Contract Agent (Phase 6). Every guardrail that is configuration lives here.
   agent:
     enabled: ${AGENT_ENABLED:true}
@@ -20,19 +43,13 @@ platform:
     spec-repo-key: orders-backend
     # Blank default is deliberate. Day 05's lesson: an unresolvable ${PLACEHOLDER} with no
     # default fails context startup, which made `mvn test` fail for a reason unrelated to the
-    # test. Blank here means draft-only: drafts work, /approve returns 409.
+    # test. Blank here means draft-only: drafts work, /approve returns 409. Day 09 overrides
+    # this from Secrets Manager when provider=aws.
     github-token: ${GITHUB_TOKEN:}
     dashboard-origins: ${AGENT_DASHBOARD_ORIGINS:http://localhost:4200}
 
 server:
   port: 8081
-
-s3:
-  endpoint: ${S3_ENDPOINT:http://localhost:9000}
-  access-key: ${S3_ACCESS_KEY:platform}
-  secret-key: ${S3_SECRET_KEY:platform123}
-  bucket: ${S3_BUCKET:specs}
-  region: ${S3_REGION:us-east-1}
 
 spring:
   # Day 06 — client registry store. Port 5433 (not 5432): docker-compose remaps it to avoid
@@ -40,6 +57,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5433/contract_platform}
     username: ${DB_USER:platform}
+    # Day 09 (F4) — the fourth credential. Overridden from Secrets Manager when provider=aws.
     password: ${DB_PASSWORD:platform123}
   jpa:
     hibernate:
@@ -51,7 +69,14 @@ spring:
     # reads is therefore mapped EAGER on purpose.
   ai:
     anthropic:
-      api-key: ${ANTHROPIC_API_KEY}
+      # Day 09 (F3) — this used to be a bare ${ANTHROPIC_API_KEY} with no default, so the whole
+      # platform refused to start without it: spec store, diff engine, severity classifier and
+      # Impact Radar all taken down by a missing narration key. ChangeReportService already
+      # catches a failing AI call and falls back to a deterministic report precisely so an AI
+      # outage cannot fail CI; the startup hard-fail sat in front of that and defeated it.
+      # A non-blank placeholder keeps Spring AI's autoconfiguration happy and pushes the failure
+      # to where it belongs — the call site, which already handles it.
+      api-key: ${ANTHROPIC_API_KEY:not-configured}
       chat:
         options:
           model: claude-haiku-4-5-20251001

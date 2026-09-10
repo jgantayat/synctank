@@ -14,6 +14,11 @@
 	<properties>
 		<java.version>21</java.version>
 		<spring-ai.version>2.0.0</spring-ai.version>
+		<!-- Day 09 — one version for every AWS artifact. s3 was pinned at 2.28.0 by hand;
+		     adding secretsmanager at any other version would put two copies of sdk-core on
+		     the classpath and let Maven's nearest-wins rule decide which one both clients
+		     get. That failure shows up at runtime, not at build time. -->
+		<aws-sdk.version>2.28.0</aws-sdk.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -21,6 +26,13 @@
 				<groupId>org.springframework.ai</groupId>
 				<artifactId>spring-ai-bom</artifactId>
 				<version>${spring-ai.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>bom</artifactId>
+				<version>${aws-sdk.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
@@ -53,10 +65,14 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Day 09 — versions now come from the AWS BOM above, not from here -->
 		<dependency>
 			<groupId>software.amazon.awssdk</groupId>
 			<artifactId>s3</artifactId>
-			<version>2.28.0</version>
+		</dependency>
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>secretsmanager</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.openapitools.openapidiff</groupId>
@@ -67,11 +83,6 @@
 			<groupId>org.springframework.ai</groupId>
 			<artifactId>spring-ai-starter-model-anthropic</artifactId>
 		</dependency>
-<!--		<dependency>-->
-<!--			<groupId>io.swagger.parser.v3</groupId>-->
-<!--			<artifactId>swagger-parser</artifactId>-->
-<!--			<version>2.1.22</version>-->
-<!--		</dependency>-->
 	</dependencies>
 
 	<build>
