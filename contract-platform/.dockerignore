@@ -1,0 +1,40 @@
+# Day 10 — the build context is contract-platform/ only. Everything below stays on the laptop.
+#
+# Two reasons, one of them security:
+#   1. Credentials. Day 09 moved every credential into Secrets Manager; a stray .env or
+#      application-local.yaml sent in the build context could be COPY'd into a layer, and a
+#      layer is forever — deleting the file in a later layer does not remove it from the image.
+#   2. Speed and determinism. target/ is rebuilt inside the image; shipping a stale local one
+#      is at best wasted upload and at worst a confusing mismatch.
+
+# build output and tool state
+target/
+.mvn/wrapper/maven-wrapper.jar
+platform.log
+*.log
+
+# credential material — mirrors the root .gitignore (Day 09)
+.env
+.env.*
+*.env
+secrets.json
+secrets.local.json
+application-local.yaml
+application-local.yml
+*-local.yaml
+*-local.yml
+.aws/
+*.pem
+*.p12
+id_rsa*
+
+# IDE / OS noise
+.idea/
+*.iml
+.vscode/
+.DS_Store
+HELP.md
+
+# the image's own build files are not inputs to the build
+Dockerfile
+.dockerignore

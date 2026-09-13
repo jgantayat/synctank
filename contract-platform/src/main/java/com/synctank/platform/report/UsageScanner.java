@@ -1,5 +1,6 @@
 package com.synctank.platform.report;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -7,10 +8,63 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 @Component
 public class UsageScanner {
+
+    /** Prefix of the sentinel line run() returns when the scan could not execute at all. */
+    static final String SCAN_FAILED_PREFIX = "(usage scan failed";
+
+    /**
+     * Day 10 — the executable, configurable so a test (and the §6 negative check) can point it
+     * at a binary that does not exist. Production value is always "rg".
+     */
+    private final String binary;
+
+    public UsageScanner(@Value("${platform.usage-scanner.binary:rg}") String binary) {
+        this.binary = (binary == null || binary.isBlank()) ? "rg" : binary;
+    }
+
+    /**
+     * Day 10 (F1) — whether the scanner can run at all.
+     *
+     * Before today there was no way to ask. A missing `rg` made every scan return a single
+     * "(usage scan failed ...)" line, which findClientConsumerDirs() turned into zero consumer
+     * directories, which RegistrySeeder recorded as "no file imports the generated client" —
+     * an EMPTY registry, reported as success. The Impact Radar then found no consumer for a
+     * removed field and downgraded BREAKING to SAFE_WITH_NOTE: the merge gate opened because a
+     * tool was missing. RegistrySeeder now asks this first and refuses to seed if it is false.
+     */
+    public boolean isAvailable() {
+        return version().isPresent();
+    }
+
+    /** First line of `rg --version`, e.g. "ripgrep 14.1.0", or empty when it cannot run. */
+    public Optional<String> version() {
+        try {
+            Process process = new ProcessBuilder(binary, "--version")
+                    .redirectErrorStream(true)
+                    .start();
+            String first;
+            try (var reader = process.inputReader()) {
+                first = reader.readLine();
+            }
+            if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return Optional.empty();
+            }
+            return process.exitValue() == 0 && first != null && !first.isBlank()
+                    ? Optional.of(first.trim())
+                    : Optional.empty();
+        } catch (IOException e) {
+            return Optional.empty();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
+    }
 
     /**
      * Day 05 entry point — unchanged signature, called by ChangeReportService.
@@ -42,7 +96,7 @@ public class UsageScanner {
             return List.of();
         }
         List<String> command = new ArrayList<>(List.of(
-                "rg", "-n", "--no-heading",
+                binary, "-n", "--no-heading",
                 "-g", "*.ts", "-g", "*.html",
                 "\\b" + symbol + "\\b"));
         roots.forEach(root -> command.add(root.toString()));
@@ -60,13 +114,18 @@ public class UsageScanner {
      */
     public List<Path> findClientConsumerDirs(Path frontendSrcRoot) {
         List<String> files = run(List.of(
-                "rg", "-l", "--no-heading",
+                binary, "-l", "--no-heading",
                 "-g", "*.ts",
                 "from\\s+['\"][^'\"]*generated",
                 frontendSrcRoot.toString()));
 
         LinkedHashSet<Path> dirs = new LinkedHashSet<>();
         for (String file : files) {
+            // Day 10 — the failure sentinel is not a file path. It happened to have no parent
+            // (so it was dropped by accident rather than by design); make that explicit.
+            if (file.startsWith(SCAN_FAILED_PREFIX)) {
+                continue;
+            }
             Path parent = Path.of(file.trim()).getParent();
             if (parent != null) {
                 dirs.add(parent);
@@ -100,9 +159,15 @@ public class UsageScanner {
                 process.destroyForcibly();
             }
             // ripgrep exits 1 on zero matches — a valid "nothing found", not an error.
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
+            // Day 10 (F1) — split from the InterruptedException branch below. The old combined
+            // catch called Thread.currentThread().interrupt() for an IOException too, i.e. for a
+            // missing `rg` — which left the interrupt flag set on a pooled Tomcat worker thread
+            // for whatever request it served next. Only a real interruption re-asserts the flag.
+            hits.add(SCAN_FAILED_PREFIX + ": " + e.getMessage() + ")");
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            hits.add("(usage scan failed: " + e.getMessage() + ")");
+            hits.add(SCAN_FAILED_PREFIX + ": interrupted)");
         }
         return hits;
     }

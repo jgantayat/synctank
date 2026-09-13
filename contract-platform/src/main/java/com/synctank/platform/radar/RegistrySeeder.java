@@ -51,6 +51,23 @@ public class RegistrySeeder {
 
     @Transactional
     public SeedResult seed(SeedRequest request) {
+        // Day 10 (F1) — FIRST, before a single row is read or deleted. An empty registry is not a
+        // neutral outcome: it tells the Impact Radar that nothing consumes anything, and the radar
+        // downgrades every BREAKING change to SAFE_WITH_NOTE on that evidence. If the scanner
+        // cannot run, the only honest answer is "I don't know", which is a failed seed — never a
+        // successful empty one. (Throwing before deleteByApp also means the previous, good
+        // registry survives untouched.)
+        if (!scanner.isAvailable()) {
+            // Logged here as well as thrown: Boot's default error body omits exception messages,
+            // so without this line the 503 would reach the caller with no explanation anywhere.
+            log.error("Refusing to seed registry for '{}': ripgrep (rg) is not executable on this "
+                            + "host. An empty registry would downgrade real BREAKING changes.",
+                    request.appName());
+            throw new IllegalStateException("Usage scanner unavailable: ripgrep (`rg`) could not be "
+                    + "executed on this host, so client usage cannot be derived. Refusing to seed "
+                    + "an empty registry — the Impact Radar would read it as 'no consumers' and "
+                    + "downgrade real breaking changes. Install ripgrep (the Day 10 image ships it).");
+        }
         List<String> notes = new ArrayList<>();
 
         ClientApp app = appRepo.findByAppName(request.appName())

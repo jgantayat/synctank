@@ -21,22 +21,37 @@ public class BucketInitializer implements ApplicationRunner {
 
     private final S3Client s3;
     private final String bucket;
+    private final boolean createIfMissing;
 
-    // Day 09 — reads the bucket from S3Props, the same source SpecStore uses. Previously this
-    // read ${s3.bucket} while SpecStore read platform.s3.bucket: two names, one of which
-    // honoured S3_BUCKET and one of which did not. Setting S3_BUCKET on a deployed environment
-    // would have created one bucket and then read from another.
+    // Day 09 — reads the bucket from S3Props, the same source SpecStore uses.
+    // Day 10 — and whether it is allowed to create it (F4).
     public BucketInitializer(S3Client s3, S3Props props) {
         this.s3 = s3;
         this.bucket = props.bucket();
+        this.createIfMissing = props.createBucketIfMissing();
     }
 
+    /**
+     * headBucket needs s3:ListBucket on the bucket — which the task role has, because SpecStore
+     * needs it too (see the policy's own notes). createBucket would need s3:CreateBucket, which
+     * the task role deliberately does NOT have: on AWS the bucket is infrastructure, created once
+     * by whoever provisions the account, not by an application on every boot.
+     *
+     * So with createIfMissing=false a missing bucket stops the platform at startup with a message
+     * that says what to do — rather than an AccessDenied from a call it should never have made.
+     */
     @Override
     public void run(ApplicationArguments args) {
         try {
             s3.headBucket(b -> b.bucket(bucket));
             log.info("Bucket '{}' already exists", bucket);
         } catch (NoSuchBucketException e) {
+            if (!createIfMissing) {
+                throw new IllegalStateException("Spec bucket '" + bucket + "' does not exist and "
+                        + "platform.s3.create-bucket-if-missing=false. Provision the bucket first "
+                        + "(infra/aws/README.md) — the platform's IAM role cannot and should not "
+                        + "create it.", e);
+            }
             s3.createBucket(b -> b.bucket(bucket));
             log.info("Created bucket '{}'", bucket);
         }

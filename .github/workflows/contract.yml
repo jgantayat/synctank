@@ -383,3 +383,56 @@ jobs:
       - name: Dump platform log on failure
         if: failure()
         run: cat contract-platform/platform.log || true
+
+  # ---------- Day 10: the contract-platform image ----------
+  # A second, independent job — it runs in parallel with spec-pipeline and shares nothing with
+  # it, so the contract gate above behaves exactly as it did on Day 09.
+  #
+  # Two things this proves on every PR:
+  #   1. The Dockerfile still builds. Day 11 deploys this image; a Dockerfile that only ever
+  #      built on one laptop is not a deployment artifact.
+  #   2. contract-platform's unit tests pass. The build stage runs `mvn package` WITHOUT
+  #      -DskipTests, and spec-pipeline's own build step above has always skipped them — so
+  #      until today no contract-platform test had ever run in CI (audit finding F5).
+  #
+  # Nothing is pushed. Pushing to ECR is Day 11, with OIDC rather than stored AWS keys.
+  platform-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # least privilege: this job reads the repo and nothing else
+
+    steps:
+      - name: Checkout synctank
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build contract-platform image (runs unit tests inside the build)
+        uses: docker/build-push-action@v6
+        with:
+          context: contract-platform
+          file: contract-platform/Dockerfile
+          push: false
+          load: true
+          tags: synctank/contract-platform:ci
+          cache-from: type=gha,scope=contract-platform
+          cache-to: type=gha,mode=max,scope=contract-platform
+
+      - name: Smoke-test the image
+        run: |
+          IMAGE=synctank/contract-platform:ci
+
+          # Runs as the unprivileged uid baked into the image, not root.
+          RUN_UID=$(docker run --rm --entrypoint id "$IMAGE" -u)
+          echo "Container uid: $RUN_UID"
+          [ "$RUN_UID" = "10001" ] || { echo "::error::image runs as uid $RUN_UID, expected 10001"; exit 1; }
+
+          # F1: the usage scanner's binary is present and executable for that user.
+          docker run --rm --entrypoint rg "$IMAGE" --version | head -1
+
+          # The health-check tool is present.
+          docker run --rm --entrypoint curl "$IMAGE" --version | head -1
+
+          # Image size, for the record — trend it, don't gate on it.
+          docker image inspect "$IMAGE" --format 'Image size: {{.Size}} bytes'
