@@ -1,6 +1,13 @@
 services:
   minio:
-    image: minio/minio:latest
+    # Pinned to quay.io, MinIO's other official registry, and to a release rather than a
+    # floating tag. MinIO archived the community edition on 2026-04-24 and withdrew the
+    # minio/minio and minio/mc repositories from Docker Hub entirely on 2026-09-11 — every
+    # Docker Hub tag now answers 404 with "pull access denied", which reads like an auth
+    # problem and is not one. A locally cached image masks it, so this fails only on a clean
+    # host: CI, a new laptop, the machine you demo from. Quay serves the identical image
+    # (digest sha256:14cea493…, the same one `minio/minio:latest` resolved to).
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"   # S3 API
