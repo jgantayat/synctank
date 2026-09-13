@@ -10,6 +10,14 @@ services:
       MINIO_ROOT_PASSWORD: platform123
     volumes:
       - minio-data:/data
+    # Day 10 — lets the containerised platform wait for "ready", not merely "started".
+    # `mc` ships inside the minio/minio image; `local` is its built-in alias for this server.
+    # CI does not use this (it polls /minio/health/live itself), so adding it changes nothing there.
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   postgres:
     image: postgres:16
@@ -21,15 +29,27 @@ services:
       POSTGRES_DB: contract_platform
     volumes:
       - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "platform", "-d", "contract_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   # ---------- Day 09 — AWS Secrets Manager, locally ----------
   # LocalStack is to Secrets Manager what MinIO is to S3: the real AWS SDK, the real API calls,
-  # a local endpoint. The whole secrets mechanism can be built, verified and demonstrated with
-  # no AWS account and no spend; Day 11 changes one property (SECRETS_ENDPOINT) to point at the
-  # real service, and nothing else moves.
+  # a local endpoint. Day 11 points SECRETS_ENDPOINT at nothing (real AWS) and nothing else moves.
   #
-  # The named volume matters — without it the secret disappears on every `docker compose down`
-  # and has to be recreated before each session.
+  # ---------- Day 10 (F2) — the secret now survives a LocalStack restart ----------
+  # Day 09 set PERSISTENCE=1 and a named volume and expected the secret to survive restarts. It
+  # did not (Day 09 §6.9 — "Secrets Manager can't find the specified secret" after a restart),
+  # because resource persistence is a LocalStack Pro feature; on this community image the flag
+  # has no effect. It is removed so nobody relies on it again.
+  #
+  # Instead, a READY-stage init hook re-creates synctank/platform from a gitignored local file
+  # every time LocalStack starts:
+  #   infra/localstack/init/ready.d/10-synctank-secret.sh   committed, contains no values
+  #   infra/localstack/secrets/secrets.local.json           gitignored, contains your values
+  # No file -> the hook logs a notice and does nothing, which is exactly Day 09's behaviour.
   localstack:
     image: localstack/localstack:3
     ports:
@@ -37,9 +57,75 @@ services:
     environment:
       SERVICES: secretsmanager
       AWS_DEFAULT_REGION: us-east-1
-      PERSISTENCE: "1"
     volumes:
       - localstack-data:/var/lib/localstack
+      - ./infra/localstack/init/ready.d:/etc/localstack/init/ready.d:ro
+      - ./infra/localstack/secrets:/etc/synctank/secrets:ro
+    # Healthy only once the READY-stage init scripts have finished — i.e. once the secret exists.
+    # Plain /_localstack/health turns green before the hook runs, which would let the platform
+    # start, look for the secret a second too early, and refuse to boot.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -sf http://localhost:4566/_localstack/init/ready
+          | grep -Eq '"completed": ?true'
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # ---------- Day 10 — contract-platform, as a container ----------
+  # Behind a compose PROFILE, so it only exists when asked for:
+  #     docker compose --profile platform up -d --build contract-platform
+  # A plain `docker compose up -d` and CI's `docker compose up -d minio postgres` are unchanged —
+  # neither will build a Maven image as a side effect.
+  #
+  # Everything here is what Day 11's ECS task definition sets, with local stand-ins:
+  #   Secrets Manager -> LocalStack      S3 -> MinIO      RDS -> the postgres service
+  contract-platform:
+    profiles: ["platform"]
+    build:
+      context: ./contract-platform
+    image: synctank/contract-platform:local
+    ports:
+      - "8081:8081"
+    # Same posture as the ECS task definition: nothing in the image is writable at runtime
+    # except /tmp (Tomcat's work directory and the JVM's perf data).
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      # --- credentials: fetched from (local) Secrets Manager, never set here ---
+      SECRETS_PROVIDER: aws
+      SECRETS_ENDPOINT: http://localstack:4566
+      SECRETS_ID: synctank/platform
+      AWS_REGION: us-east-1
+      # NOT credentials. LocalStack accepts any key pair, and the SDK's default chain needs
+      # *something* to sign with. "test"/"test" is LocalStack's documented convention.
+      # On ECS these two lines do not exist — the task role signs the request.
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      # --- service addresses: container DNS names and CONTAINER ports ---
+      # postgres:5432, not localhost:5433 — 5433 is the port published to the HOST. Inside the
+      # compose network the database listens on its own port. The #1 containerisation mistake.
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: specs
+      DB_URL: jdbc:postgresql://postgres:5432/contract_platform
+      DB_USER: platform
+      AGENT_DASHBOARD_ORIGINS: http://localhost:4200
+    # UsageScanner and RegistrySeeder read the frontend source tree from the filesystem
+    # (Day 05/06 design). Mounted read-only at a fixed container path — pass
+    # frontendSrcPath=/workspace/orders-frontend/src to /registry/apps and /report.
+    volumes:
+      - ./orders-frontend/src:/workspace/orders-frontend/src:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
 
 volumes:
   minio-data:

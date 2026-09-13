@@ -41,6 +41,11 @@ platform:
     region: us-east-1
     access-key: test
     secret-key: test
+    auth: static
+    path-style: true
+    create-bucket-if-missing: true
+  usage-scanner:
+    binary: rg
   radar:
     escalation-calls-per-day: 5000
   agent:

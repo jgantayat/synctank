@@ -43,7 +43,21 @@ public class RegistryController {
         if (request.baselineSpec() == null || request.baselineSpec().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "baselineSpec is required");
         }
-        return seeder.seed(request);
+        if (request.frontendSrcPath() == null || request.frontendSrcPath().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "frontendSrcPath is required");
+        }
+        try {
+            return seeder.seed(request);
+        } catch (IllegalArgumentException e) {
+            // Day 10 — a frontendSrcPath that is not a directory is the caller's mistake, and
+            // inside a container it is the MOST likely mistake (a host path, not the mounted
+            // /workspace/... path). It used to surface as an anonymous 500.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+        } catch (IllegalStateException e) {
+            // Day 10 (F1) — scanner unavailable. 503: the request was fine, this host cannot
+            // serve it. CI's `curl -fS` fails the seed step loudly instead of seeding nothing.
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage(), e);
+        }
     }
 
     public record AppSummary(String appName, String team, String repo, String clientVersion,

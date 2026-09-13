@@ -91,4 +91,40 @@ class SecretsInitializerTest {
             assertThat(key.source()).isEqualTo("aws");
         });
     }
+
+    // ---------------------------------------------------------------- Day 10 (F3)
+
+    @Test
+    void iamModeDoesNotRequireAnS3KeyPairAndSaysWhy() {
+        Map<String, String> bundle = fullBundle();
+        bundle.remove("s3AccessKey");
+        bundle.remove("s3SecretKey");
+
+        SecretsInitializer.Binding binding = SecretsInitializer.bind(bundle, false);
+
+        assertThat(binding.missingRequired()).isEmpty();
+        assertThat(binding.properties())
+                .doesNotContainKey("platform.s3.access-key")
+                .doesNotContainKey("platform.s3.secret-key");
+        // /health/secrets reports the role as the source, not a missing credential.
+        assertThat(binding.keys())
+                .filteredOn(key -> key.property().startsWith("platform.s3."))
+                .hasSize(2)
+                .allSatisfy(key -> assertThat(key.source()).isEqualTo("iam-role"));
+    }
+
+    @Test
+    void iamModeStillRequiresTheDatabasePassword() {
+        Map<String, String> bundle = fullBundle();
+        bundle.remove("s3AccessKey");
+        bundle.remove("s3SecretKey");
+        bundle.remove("dbPassword");
+
+        SecretsInitializer.Binding binding = SecretsInitializer.bind(bundle, false);
+
+        // The task role replaces the S3 key pair and nothing else. RDS password auth is
+        // unchanged, so a missing dbPassword still refuses startup.
+        assertThat(binding.missingRequired()).containsExactly("dbPassword");
+    }
+
 }

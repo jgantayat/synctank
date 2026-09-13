@@ -93,8 +93,14 @@ public class SecretsInitializer implements ApplicationContextInitializer<Configu
         String region = environment.getProperty("platform.secrets.region", "us-east-1");
         String endpoint = environment.getProperty("platform.secrets.endpoint", "");
 
+        // Day 10 — whether the S3 key pair is required depends on how the spec store
+        // authenticates. Read from the Environment like every other setting here: this runs
+        // before S3Props is bound.
+        boolean staticS3 = !"iam".equalsIgnoreCase(
+                environment.getProperty("platform.s3.auth", "static").trim());
+
         Map<String, String> bundle = AwsSecretBundleLoader.fetch(region, endpoint, secretId);
-        Binding binding = bind(bundle);
+        Binding binding = bind(bundle, staticS3);
 
         if (!binding.missingRequired().isEmpty()) {
             throw new IllegalStateException("Secret '" + secretId + "' is missing required key(s): "
@@ -123,7 +129,16 @@ public class SecretsInitializer implements ApplicationContextInitializer<Configu
                    List<SecretsStatus.KeyStatus> keys,
                    List<String> missingRequired) {}
 
+    /** Day 09 signature, kept for its tests: the MinIO (static S3) case. */
     static Binding bind(Map<String, String> bundle) {
+        return bind(bundle, true);
+    }
+
+    /**
+     * @param staticS3 true when platform.s3.auth=static (MinIO key pair required), false when
+     *                 iam (the task role supplies S3 access; the key pair is not needed).
+     */
+    static Binding bind(Map<String, String> bundle, boolean staticS3) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<SecretsStatus.KeyStatus> keys = new ArrayList<>();
         List<String> missingRequired = new ArrayList<>();
@@ -134,12 +149,17 @@ public class SecretsInitializer implements ApplicationContextInitializer<Configu
 
             if (present) {
                 properties.put(entry.springProperty(), value);
-            } else if (entry.required()) {
+            } else if (entry.requiredWhen(staticS3)) {
                 missingRequired.add(entry.jsonKey());
             }
 
+            // "iam-role" rather than "absent" for a key the current mode does not use, so
+            // GET /health/secrets on Day 11 does not read like a misconfiguration.
+            String source = present ? "aws"
+                    : entry.suppliedByRole(staticS3) ? "iam-role" : "absent";
+
             keys.add(new SecretsStatus.KeyStatus(entry.springProperty(), entry.purpose(),
-                    present, present ? "aws" : "absent", SecretsStatus.fingerprint(value)));
+                    present, source, SecretsStatus.fingerprint(value)));
         }
         return new Binding(properties, keys, missingRequired);
     }

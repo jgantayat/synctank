@@ -25,7 +25,18 @@ platform:
     region: ${S3_REGION:us-east-1}
     access-key: ${S3_ACCESS_KEY:platform}
     secret-key: ${S3_SECRET_KEY:platform123}
-
+  # ---------- Day 10 (F3/F4) — the MinIO assumptions become switches ----------
+  # Every default below is Day 09's behaviour; CI and local runs change nothing.
+  # On AWS (infra/aws/ecs/contract-platform-task-definition.json): S3_AUTH=iam,
+  # S3_PATH_STYLE=false, S3_CREATE_BUCKET=false and S3_ENDPOINT="" — the task role grants
+  # access, no key pair exists, and the bucket is provisioned infrastructure.
+    auth: ${S3_AUTH:static}
+    path-style: ${S3_PATH_STYLE:true}
+    create-bucket-if-missing: ${S3_CREATE_BUCKET:true}
+  # Day 10 (F1) — the executable UsageScanner runs. Always `rg` in practice; configurable so the
+  # "scanner unavailable" path can be exercised on purpose (guide §8.9) rather than by accident.
+  usage-scanner:
+    binary: ${USAGE_SCANNER_BINARY:rg}
   radar:
     escalation-calls-per-day: ${RADAR_ESCALATION_THRESHOLD:5000}
 

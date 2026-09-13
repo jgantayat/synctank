@@ -1,5 +1,6 @@
 package com.synctank.platform.report;
 
+import java.util.LinkedHashMap;
 import com.synctank.platform.diff.ChangeRecord;                 // Day 03
 import com.synctank.platform.radar.ConsumerImpact;              // Day 06
 import com.synctank.platform.radar.ContractImpactReport;        // Day 06
@@ -32,10 +33,16 @@ public class ChangeReportService {
     public ContractChangeReport generateReport(ContractImpactReport diffReport, Path frontendSrcRoot) {
 
         // Step 1 — deterministic: scan real usages per changed field (never delegated to the AI)
+        // Day 10 (F6, carried from Day 09's F5) — merge function + LinkedHashMap. ChangeRecord is
+        // a record, so two identical records are EQUAL keys, and toMap without a merge function
+        // throws IllegalStateException("Duplicate key") — outside the try block below, i.e. a raw
+        // 500 from /report instead of the deterministic fallback this method promises.
         Map<ChangeRecord, List<String>> usagesByChange = diffReport.changes().stream()
                 .collect(Collectors.toMap(
                         change -> change,
-                        change -> usageScanner.findUsages(frontendSrcRoot, leafFieldName(change.location()))
+                        change -> usageScanner.findUsages(frontendSrcRoot, leafFieldName(change.location())),
+                        (first, duplicate) -> first,       // identical records: one scan is enough
+                        LinkedHashMap::new                 // keep diff order
                 ));
 
         // Step 2 — deterministic: radar findings, keyed by the same location string

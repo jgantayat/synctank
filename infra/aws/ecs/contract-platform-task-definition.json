@@ -1,0 +1,61 @@
+{
+  "family": "synctank-contract-platform",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/synctank-contract-platform-task",
+  "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/synctank-contract-platform-execution",
+  "containerDefinitions": [
+    {
+      "name": "contract-platform",
+      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/synctank/contract-platform:${IMAGE_TAG}",
+      "essential": true,
+      "user": "10001:10001",
+      "readonlyRootFilesystem": true,
+      "portMappings": [
+        { "containerPort": 8081, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "SECRETS_PROVIDER", "value": "aws" },
+        { "name": "SECRETS_ID", "value": "synctank/platform" },
+        { "name": "AWS_REGION", "value": "${AWS_REGION}" },
+        { "name": "S3_AUTH", "value": "iam" },
+        { "name": "S3_ENDPOINT", "value": "" },
+        { "name": "S3_PATH_STYLE", "value": "false" },
+        { "name": "S3_CREATE_BUCKET", "value": "false" },
+        { "name": "S3_BUCKET", "value": "${SPEC_BUCKET}" },
+        { "name": "S3_REGION", "value": "${AWS_REGION}" },
+        { "name": "DB_URL", "value": "jdbc:postgresql://${DB_HOST}:5432/contract_platform" },
+        { "name": "DB_USER", "value": "platform" },
+        { "name": "AGENT_DASHBOARD_ORIGINS", "value": "${DASHBOARD_ORIGIN}" }
+      ],
+      "mountPoints": [
+        { "sourceVolume": "tmp", "containerPath": "/tmp", "readOnly": false }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -fsS http://localhost:8081/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 90
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/synctank/contract-platform",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "platform"
+        }
+      },
+      "stopTimeout": 30
+    }
+  ],
+  "volumes": [
+    { "name": "tmp" }
+  ]
+}
