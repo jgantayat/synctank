@@ -6,6 +6,10 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!-- Day 11 — runtime backend addresses. Must load BEFORE the app bundle, which the
+       builder injects at the end of <body>; a plain script in <head> is guaranteed to. -->
+  <script src="config.js"></script>
+</head>
 </head>
 <body>
   <app-root></app-root>
