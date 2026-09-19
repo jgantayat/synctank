@@ -5,6 +5,7 @@ import com.synctank.platform.diff.ChangeRecord;                 // Day 03
 import com.synctank.platform.radar.ConsumerImpact;              // Day 06
 import com.synctank.platform.radar.ContractImpactReport;        // Day 06
 import com.synctank.platform.radar.ImpactAssessment;            // Day 06
+import com.synctank.platform.ai.AiUsageMeter;                   // Day 11
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
@@ -19,10 +20,13 @@ public class ChangeReportService {
 
     private final ChatClient chatClient;
     private final UsageScanner usageScanner;
+    private final AiUsageMeter aiUsage;
 
-    public ChangeReportService(ChatClient.Builder chatClientBuilder, UsageScanner usageScanner) {
+    public ChangeReportService(ChatClient.Builder chatClientBuilder, UsageScanner usageScanner,
+                               AiUsageMeter aiUsage) {
         this.chatClient = chatClientBuilder.build();
         this.usageScanner = usageScanner;
+        this.aiUsage = aiUsage;
     }
 
     /**
@@ -109,11 +113,15 @@ public class ChangeReportService {
         String userPrompt = "API changes detected in this pull request:\n\n" + changesBlock;
 
         try {
-            ChangeReport aiReport = chatClient.prompt()
+            // Day 11 — the only change here is the wrapper. A tripped cap throws
+            // BudgetExceededException from inside this try, so the existing catch below
+            // produces the deterministic report, exactly as it does for a rate limit or a
+            // timeout. CI never hard-fails on a spend cap any more than on an AI outage.
+            ChangeReport aiReport = aiUsage.meter("change-report", () -> chatClient.prompt()
                     .system(systemPrompt)
                     .user(userPrompt)
                     .call()
-                    .entity(ChangeReport.class);
+                    .entity(ChangeReport.class));
 
             // The radar list is attached AFTER the call, from the deterministic source.
             // Nothing the model returns can alter consumer names or call volumes.

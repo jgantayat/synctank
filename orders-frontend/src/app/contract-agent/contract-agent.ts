@@ -1,6 +1,7 @@
 import { Component, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
+import { PLATFORM_BASE } from '../api-config';
 
 /**
  * Local mirror of the platform's AgentDraft / AgentController payloads.
@@ -50,7 +51,8 @@ interface AgentStatus {
   canOpenPullRequests: boolean; allowedTypes: string[];
 }
 
-const PLATFORM = 'http://localhost:8081';
+// Day 11 — resolved from public/config.js at runtime; defaults to localhost:8081.
+const PLATFORM = PLATFORM_BASE;
 
 @Component({
   selector: 'app-contract-agent',

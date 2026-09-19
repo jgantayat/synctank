@@ -40,6 +40,14 @@ platform:
   radar:
     escalation-calls-per-day: ${RADAR_ESCALATION_THRESHOLD:5000}
 
+  # Day 11 (F5) — the AI spend guardrail. This platform calls api.anthropic.com directly,
+  # not Bedrock, so no AWS cost alarm can see this spend: the cap has to live in-process.
+  # 200/day is roughly 40x a heavy demo day and about $1 at the estimate below — generous
+  # enough never to fire by accident, low enough that a stuck retry loop stops in minutes.
+  ai:
+    daily-call-limit: ${AI_DAILY_CALL_LIMIT:200}
+    estimated-cost-per-call-usd: ${AI_COST_PER_CALL_USD:0.005}
+
   # Day 07 — Contract Agent (Phase 6). Every guardrail that is configuration lives here.
   agent:
     enabled: ${AGENT_ENABLED:true}
@@ -61,8 +69,19 @@ platform:
 
 server:
   port: 8081
+  # Day 11 (F6) — Spring's default is `immediate`, which drops in-flight requests the
+  # instant SIGTERM lands. The Dockerfile already puts the JVM at PID 1 so it RECEIVES the
+  # signal, and the ECS task definition already allows 30s to act on it; without this line
+  # both of those did nothing. An agent draft takes 3-8s and a /report call up to 60, so a
+  # deploy at the wrong moment was a failed request on someone's screen.
+  shutdown: graceful
 
 spring:
+  # Day 11 — how long graceful shutdown waits for in-flight work before forcing it.
+  # Below the task definition's stopTimeout of 30s on purpose: Spring must finish first,
+  # or ECS SIGKILLs mid-drain and the graceful setting above is decorative.
+  lifecycle:
+    timeout-per-shutdown-phase: 25s
   # Day 06 — client registry store. Port 5433 (not 5432): docker-compose remaps it to avoid
   # the Day-01 clash with a locally installed Postgres.
   datasource:
@@ -70,6 +89,8 @@ spring:
     username: ${DB_USER:platform}
     # Day 09 (F4) — the fourth credential. Overridden from Secrets Manager when provider=aws.
     password: ${DB_PASSWORD:platform123}
+    hikari:
+      connection-timeout: 5000
   jpa:
     hibernate:
       ddl-auto: update

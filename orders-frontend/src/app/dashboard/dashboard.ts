@@ -1,6 +1,7 @@
 import { Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Chart, registerables, type ChartConfiguration } from 'chart.js';
+import { PLATFORM_BASE } from '../api-config';
 
 // Chart.js v4 ships tree-shakeable: nothing is registered by default, and an unregistered
 // controller fails at construction with "line is not a registered controller" rather than
@@ -56,7 +57,8 @@ interface AuditEntry {
   decidedAt: string | null;
 }
 
-const PLATFORM = 'http://localhost:8081';
+// Day 11 — resolved from public/config.js at runtime; defaults to localhost:8081.
+const PLATFORM = PLATFORM_BASE;
 const SPEC_REPO = 'orders-backend';
 
 const INK = '#1b1b2f';
@@ -76,6 +78,11 @@ export class Dashboard {
   // Signals, not plain fields: Angular 21 is zoneless by default, so a write inside
   // .subscribe() is only guaranteed to repaint when it goes through a signal. Same
   // lesson as OrderDetail on Day 04 and ContractAgent on Day 07.
+  
+  // Day 11 — shown in the panel header. On stage this is the difference between "it runs
+  // on my laptop" and "it runs in our AWS account", and a judge can read it from the seat.
+  readonly platformBase = PLATFORM;
+
   specHistory = signal<SpecVersion[]>([]);
   apps = signal<AppSummary[]>([]);
   traffic = signal<TrafficRow[]>([]);

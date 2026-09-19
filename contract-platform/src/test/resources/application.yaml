@@ -48,6 +48,11 @@ platform:
     binary: rg
   radar:
     escalation-calls-per-day: 5000
+  # Day 11 — explicit rather than relying on AiProperties' @DefaultValue, per this file's
+  # own rule. A high cap: no test should ever trip it, and a test that does has a bug.
+  ai:
+    daily-call-limit: 1000
+    estimated-cost-per-call-usd: 0.005
   agent:
     enabled: false
     github-api: https://api.github.com

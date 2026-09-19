@@ -6,6 +6,7 @@ import com.synctank.platform.radar.ContractImpactReport;
 import com.synctank.platform.radar.EffectiveSeverity;
 import com.synctank.platform.radar.ImpactRadarService;
 import com.synctank.platform.radar.SpecUsageExtractor;
+import com.synctank.platform.ai.AiUsageMeter;
 import com.synctank.platform.spec.SpecStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,7 @@ public class ContractAgentService {
     private final ImpactRadarService radar;
     private final GitHubClient github;
     private final AgentRequestRepository requests;
+    private final AiUsageMeter aiUsage;
 
     public ContractAgentService(ChatClient.Builder chatClientBuilder,
                                 AgentProperties props,
@@ -59,7 +61,8 @@ public class ContractAgentService {
                                 DiffService diffService,
                                 ImpactRadarService radar,
                                 GitHubClient github,
-                                AgentRequestRepository requests) {
+                                AgentRequestRepository requests,
+                                AiUsageMeter aiUsage) {
         this.chatClient = chatClientBuilder.build();
         this.props = props;
         this.specStore = specStore;
@@ -70,6 +73,7 @@ public class ContractAgentService {
         this.radar = radar;
         this.github = github;
         this.requests = requests;
+        this.aiUsage = aiUsage;
     }
 
     public record DraftCommand(String request, String requester, FieldProposal override) {}
@@ -85,9 +89,17 @@ public class ContractAgentService {
 
         String baseline = specStore.getBaselineSpec(props.specRepoKey());
 
-        FieldProposal proposal = command.override() != null
-                ? command.override()
-                : propose(command.request(), baseline);
+        // Day 11 — a tripped AI spend cap becomes a BLOCKED draft, not a 500 on stage.
+        // Same shape as every other guardrail refusal: the audit row is persisted, the
+        // dashboard renders the reason, and nothing was written to GitHub.
+        FieldProposal proposal;
+        try {
+            proposal = command.override() != null
+                    ? command.override()
+                    : propose(command.request(), baseline);
+        } catch (AiUsageMeter.BudgetExceededException e) {
+            return block(row, guardrails, e.getMessage(), null);
+        }
 
         if (command.override() != null) {
             guardrails.add("Proposal supplied explicitly by the operator — the model was not called. "
@@ -350,11 +362,11 @@ public class ContractAgentService {
                 %s
                 """.formatted(request, contractBlock, endpointBlock);
 
-        return chatClient.prompt()
+        return aiUsage.meter("agent-proposal", () -> chatClient.prompt()
                 .system(system)
                 .user(user)
                 .call()
-                .entity(FieldProposal.class);
+                .entity(FieldProposal.class));
     }
 
     private AgentDraft block(AgentRequest row, List<String> guardrails, String reason,
