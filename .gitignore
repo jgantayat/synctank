@@ -23,3 +23,8 @@ id_rsa*
 .idea/
 *.iml
 .DS_Store
+# Day 11 — local AWS deployment environment. Identifiers, not credentials, but account ids,
+# ARNs, a personal email and a home IP have no business in a public repo.
+infra/aws/deploy/00-env.sh
+infra/aws/deploy/01-provisioned.sh
+.idea/

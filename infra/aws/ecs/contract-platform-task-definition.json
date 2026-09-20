@@ -19,10 +19,11 @@
       "memory": 256,
       "entryPoint": ["/bin/sh", "-c"],
       "command": [
-        "set -eu; curl -fsSL https://codeload.github.com/jgantayat/synctank/tar.gz/refs/heads/main | tar xz -C /workspace --strip-components=1 synctank-main/orders-frontend/src; chmod -R a+rX /workspace; ls -R /workspace/orders-frontend/src | head -20"
+        "set -eu; chmod 1777 /tmp; curl -fsSL https://codeload.github.com/jgantayat/synctank/tar.gz/refs/heads/main | tar xz -C /workspace --strip-components=1 synctank-main/orders-frontend/src; chmod -R a+rX /workspace; ls -R /workspace/orders-frontend/src | head -20"
       ],
       "mountPoints": [
-        { "sourceVolume": "workspace", "containerPath": "/workspace", "readOnly": false }
+        { "sourceVolume": "workspace", "containerPath": "/workspace", "readOnly": false },
+        { "sourceVolume": "tmp", "containerPath": "/tmp", "readOnly": false }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
