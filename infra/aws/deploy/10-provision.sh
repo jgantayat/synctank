@@ -93,7 +93,7 @@ sg_id() { aws ec2 describe-security-groups --region "$AWS_REGION" \
 ALB_SG=$(sg_id synctank-alb-sg)
 if [ "$ALB_SG" = "None" ] || [ -z "$ALB_SG" ]; then
   ALB_SG=$(aws ec2 create-security-group --region "$AWS_REGION" --group-name synctank-alb-sg \
-    --description "SyncTank ALB — allowlisted demo access only" --vpc-id "$VPC_ID" \
+    --description "SyncTank ALB - allowlisted demo access only" --vpc-id "$VPC_ID" \
     --query GroupId --output text)
 fi
 # F1: the platform has no authentication and can open pull requests. This allowlist is the
@@ -105,7 +105,7 @@ echo "ok: alb sg $ALB_SG, ingress 80 from $DEMO_CIDR"
 TASK_SG=$(sg_id synctank-task-sg)
 if [ "$TASK_SG" = "None" ] || [ -z "$TASK_SG" ]; then
   TASK_SG=$(aws ec2 create-security-group --region "$AWS_REGION" --group-name synctank-task-sg \
-    --description "SyncTank Fargate task — ALB only" --vpc-id "$VPC_ID" \
+    --description "SyncTank Fargate task - ALB only" --vpc-id "$VPC_ID" \
     --query GroupId --output text)
 fi
 aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$TASK_SG" \

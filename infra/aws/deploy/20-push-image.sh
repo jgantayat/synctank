@@ -16,7 +16,7 @@ echo "=== docker login to $REGISTRY"
 aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
 
 echo "=== build $IMAGE (tests run inside the build, per the Day 10 Dockerfile)"
-docker build --platform linux/amd64 -t "$IMAGE" contract-platform
+docker build --platform linux/amd64 --provenance=false --sbom=false -t "$IMAGE" contract-platform
 
 echo "=== push"
 docker push "$IMAGE"
