@@ -1,0 +1,37 @@
+# Day 11 — copy to 00-env.sh and fill in. 00-env.sh is NOT gitignored by name, so it must
+# never hold a credential: it holds identifiers only. Credentials live in Secrets Manager.
+#
+#   cp infra/aws/deploy/00-env.sh.example infra/aws/deploy/00-env.sh
+#   $EDITOR infra/aws/deploy/00-env.sh
+#   source infra/aws/deploy/00-env.sh
+
+export AWS_REGION=ap-south-1
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Globally unique. The account id suffix is the usual way to guarantee that.
+export SPEC_BUCKET=synctank-specs-${AWS_ACCOUNT_ID}
+
+export ECR_REPO=synctank/contract-platform
+export CLUSTER=synctank
+export SERVICE=contract-platform
+export TASK_FAMILY=synctank-contract-platform
+export LOG_GROUP=/ecs/synctank/contract-platform
+export SECRET_ID=synctank/platform
+
+# Image tag. A git sha, never `latest`: `latest` makes "which code is running?" unanswerable
+# and makes a rollback a rebuild.
+export IMAGE_TAG=$(git rev-parse --short HEAD)
+
+# Browser origin allowed to call /agent/** and /registry/**. The Angular dev server.
+export DASHBOARD_ORIGIN=http://localhost:4200
+
+export AI_DAILY_CALL_LIMIT=200
+
+# WHO MAY REACH THE PLATFORM. See audit finding F1: contract-platform has no authentication
+# and can open pull requests on your repo. This is the only thing standing in front of it.
+# Never 0.0.0.0/0.
+export DEMO_CIDR=$(curl -s https://checkip.amazonaws.com | tr -d '\n')/32
+
+# Monthly budget alarm, in USD, and where the alerts go.
+export BUDGET_USD=25
+export ALERT_EMAIL=you@example.com

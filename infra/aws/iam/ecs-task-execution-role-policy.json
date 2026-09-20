@@ -25,6 +25,12 @@
         "logs:PutLogEvents"
       ],
       "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/ecs/synctank/contract-platform:*"
+    },
+    {
+      "Sid": "InjectSidecarDatabasePasswordOnly",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:synctank/platform-??????"
     }
   ]
 }

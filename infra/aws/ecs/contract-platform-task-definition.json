@@ -2,8 +2,8 @@
   "family": "synctank-contract-platform",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
-  "cpu": "512",
-  "memory": "1024",
+  "cpu": "1024",
+  "memory": "2048",
   "runtimePlatform": {
     "cpuArchitecture": "X86_64",
     "operatingSystemFamily": "LINUX"
@@ -12,11 +12,66 @@
   "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/synctank-contract-platform-execution",
   "containerDefinitions": [
     {
+      "name": "frontend-src-init",
+      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/synctank/contract-platform:${IMAGE_TAG}",
+      "essential": false,
+      "user": "0:0",
+      "memory": 256,
+      "entryPoint": ["/bin/sh", "-c"],
+      "command": [
+        "set -eu; curl -fsSL https://codeload.github.com/jgantayat/synctank/tar.gz/refs/heads/main | tar xz -C /workspace --strip-components=1 synctank-main/orders-frontend/src; chmod -R a+rX /workspace; ls -R /workspace/orders-frontend/src | head -20"
+      ],
+      "mountPoints": [
+        { "sourceVolume": "workspace", "containerPath": "/workspace", "readOnly": false }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/synctank/contract-platform",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "init"
+        }
+      }
+    },
+    {
+      "name": "postgres",
+      "image": "public.ecr.aws/docker/library/postgres:16",
+      "essential": true,
+      "memory": 512,
+      "environment": [
+        { "name": "POSTGRES_USER", "value": "platform" },
+        { "name": "POSTGRES_DB", "value": "contract_platform" }
+      ],
+      "secrets": [
+        { "name": "POSTGRES_PASSWORD", "valueFrom": "${PLATFORM_SECRET_ARN}:dbPassword::" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "pg_isready -U platform -d contract_platform || exit 1"],
+        "interval": 10,
+        "timeout": 5,
+        "retries": 6,
+        "startPeriod": 30
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/synctank/contract-platform",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "postgres"
+        }
+      }
+    },
+    {
       "name": "contract-platform",
       "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/synctank/contract-platform:${IMAGE_TAG}",
       "essential": true,
       "user": "10001:10001",
+      "memory": 1024,
       "readonlyRootFilesystem": true,
+      "dependsOn": [
+        { "containerName": "frontend-src-init", "condition": "SUCCESS" },
+        { "containerName": "postgres", "condition": "HEALTHY" }
+      ],
       "portMappings": [
         { "containerPort": 8081, "protocol": "tcp" }
       ],
@@ -30,12 +85,15 @@
         { "name": "S3_CREATE_BUCKET", "value": "false" },
         { "name": "S3_BUCKET", "value": "${SPEC_BUCKET}" },
         { "name": "S3_REGION", "value": "${AWS_REGION}" },
-        { "name": "DB_URL", "value": "jdbc:postgresql://${DB_HOST}:5432/contract_platform" },
+        { "name": "DB_URL", "value": "jdbc:postgresql://localhost:5432/contract_platform" },
         { "name": "DB_USER", "value": "platform" },
-        { "name": "AGENT_DASHBOARD_ORIGINS", "value": "${DASHBOARD_ORIGIN}" }
+        { "name": "AGENT_DASHBOARD_ORIGINS", "value": "${DASHBOARD_ORIGIN}" },
+        { "name": "AI_DAILY_CALL_LIMIT", "value": "${AI_DAILY_CALL_LIMIT}" },
+        { "name": "LOGGING_STRUCTURED_FORMAT_CONSOLE", "value": "ecs" }
       ],
       "mountPoints": [
-        { "sourceVolume": "tmp", "containerPath": "/tmp", "readOnly": false }
+        { "sourceVolume": "tmp", "containerPath": "/tmp", "readOnly": false },
+        { "sourceVolume": "workspace", "containerPath": "/workspace", "readOnly": true }
       ],
       "healthCheck": {
         "command": ["CMD-SHELL", "curl -fsS http://localhost:8081/health || exit 1"],
@@ -56,6 +114,7 @@
     }
   ],
   "volumes": [
-    { "name": "tmp" }
+    { "name": "tmp" },
+    { "name": "workspace" }
   ]
 }
