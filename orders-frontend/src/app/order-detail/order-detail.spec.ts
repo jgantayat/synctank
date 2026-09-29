@@ -25,7 +25,7 @@ describe('OrderDetail', () => {
   it('should create', () => {
     // Answer the request ngOnInit made, so nothing escapes as an unhandled error.
     const req = httpMock.expectOne('http://localhost:8080/api/orders/1');
-    req.flush({ id: 1, customerName: 'Test', amount: 10, status: 'SHIPPED' });
+    req.flush({ id: 1, customerFullName: 'Test', amount: 10, status: 'SHIPPED' });
     expect(component).toBeTruthy();
     httpMock.verify();
   });
