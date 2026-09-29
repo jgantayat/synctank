@@ -27,4 +27,10 @@ public class OrderController {
     public OrderResponse createOrder(@Valid @RequestBody CreateOrderRequest req) {
         return new OrderResponse(42L, req.customerName(), req.amount(), "PENDING");
     }
+
+    /** Day 12 regression test J1 — an additive endpoint. Never merged. */
+    @GetMapping(value = "/count", produces = MediaType.APPLICATION_JSON_VALUE)
+    public java.util.Map<String, Integer> countOrders() {
+        return java.util.Map.of("count", 2);
+    }
 }
