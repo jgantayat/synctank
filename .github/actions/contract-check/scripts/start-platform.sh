@@ -2,11 +2,15 @@
 #
 # SyncTank contract-check — step 1: a throwaway contract-platform on this runner.
 #
-# Exactly what contract.yml did inline from Day 02 to Day 11, with three differences:
+# Exactly what contract.yml did inline from Day 02 to Day 11, with four differences:
 #   - the spec store and database are started with `docker run`, not the CALLER's
 #     docker-compose.yml, because an adopting repository does not have ours;
+#   - the S3 store is LocalStack, not MinIO. MinIO withdrew its images from Docker Hub
+#     (2026-09-11) and then closed quay.io to anonymous pulls too (seen on PR #22: "unauthorized").
+#     LocalStack's S3 is the same AWS API, the image is public on Docker Hub, and this project
+#     already depends on it for Secrets Manager (Day 09). The platform only sees "an S3 endpoint".
 #   - host ports are high and unusual (19000 / 15433 / 18081) so they cannot collide with
-#     services the caller's own job already runs on 9000 / 5432 / 8080 / 8081;
+#     services the caller's own job (or your own LocalStack on 4566) already uses;
 #   - the Contract Agent is switched OFF and GITHUB_TOKEN is blanked for the process. A CI
 #     platform only ever diffs; it has no business holding a credential that can open PRs.
 #
@@ -20,10 +24,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 PORT="${PLATFORM_PORT:-18081}"
 PLATFORM_URL="http://localhost:${PORT}"
-MINIO_PORT=19000
+S3_PORT=19000
 PG_PORT=15433
-# Same pin as docker-compose.yml, for the same reason (Day 10: Docker Hub withdrew minio/minio).
-MINIO_IMAGE="quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+# Same tag docker-compose.yml already uses for LocalStack. Public on Docker Hub, no login.
+S3_IMAGE="localstack/localstack:3"
 PG_IMAGE="postgres:16"
 
 ROOT="$(work_root)"
@@ -46,19 +50,32 @@ fi
 rg --version | head -n 1
 endgroup
 
-group "Spec store (MinIO) and registry database (Postgres)"
-docker rm -f synctank-cc-minio synctank-cc-postgres > /dev/null 2>&1 || true
+group "Spec store (LocalStack S3) and registry database (Postgres)"
+# synctank-cc-minio is removed too, in case a runner or laptop still has one from an earlier version.
+docker rm -f synctank-cc-s3 synctank-cc-minio synctank-cc-postgres > /dev/null 2>&1 || true
 
-docker run -d --name synctank-cc-minio -p "${MINIO_PORT}:9000" \
-  -e MINIO_ROOT_USER=platform -e MINIO_ROOT_PASSWORD=platform123 \
-  "$MINIO_IMAGE" server /data > /dev/null
+docker run -d --name synctank-cc-s3 -p "${S3_PORT}:4566" \
+  -e SERVICES=s3 -e AWS_DEFAULT_REGION=us-east-1 \
+  "$S3_IMAGE" > /dev/null
 
 docker run -d --name synctank-cc-postgres -p "${PG_PORT}:5432" \
   -e POSTGRES_USER=platform -e POSTGRES_PASSWORD=platform123 -e POSTGRES_DB=contract_platform \
   "$PG_IMAGE" > /dev/null
 
-wait_for "http://localhost:${MINIO_PORT}/minio/health/live" MinIO 30 \
-  || { docker logs synctank-cc-minio | tail -n 40; exit 1; }
+# /_localstack/health answers before S3 is usable; wait until it reports s3 available or running.
+S3_OK=0
+for i in $(seq 1 45); do
+  if curl -sf "http://localhost:${S3_PORT}/_localstack/health" 2> /dev/null \
+       | grep -Eq '"s3": ?"(available|running)"'; then
+    echo "LocalStack S3 is up (attempt $i)"; S3_OK=1; break
+  fi
+  sleep 2
+done
+if [ "$S3_OK" != 1 ]; then
+  echo "::error title=Contract check::LocalStack S3 never became available"
+  docker logs synctank-cc-s3 | tail -n 40
+  exit 1
+fi
 
 PG_OK=0
 for i in $(seq 1 30); do
@@ -90,9 +107,9 @@ group "Start contract-platform on :$PORT"
 # which skips application.yaml's own default and hands Spring AI a blank key (Day 09 F3).
 SERVER_PORT="$PORT" \
 SECRETS_PROVIDER=env \
-S3_ENDPOINT="http://localhost:${MINIO_PORT}" \
-S3_ACCESS_KEY=platform \
-S3_SECRET_KEY=platform123 \
+S3_ENDPOINT="http://localhost:${S3_PORT}" \
+S3_ACCESS_KEY=test \
+S3_SECRET_KEY=test \
 S3_BUCKET=specs \
 DB_URL="jdbc:postgresql://localhost:${PG_PORT}/contract_platform" \
 DB_USER=platform \
