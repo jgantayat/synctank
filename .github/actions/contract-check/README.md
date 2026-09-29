@@ -10,7 +10,7 @@ On every pull request it:
 4. posts **one** plain-English report comment per API and keeps it up to date as you push;
 5. fails the check on an unapproved BREAKING change.
 
-Everything runs on the job's own runner: a throwaway contract-platform, MinIO and Postgres start for the job and are gone when it ends. No SyncTank server, no account, no data leaves the runner except the optional call to Anthropic for the narration.
+Everything runs on the job's own runner: a throwaway contract-platform, an S3 store (LocalStack) and Postgres start for the job and are gone when it ends. No SyncTank server, no account, no data leaves the runner except the optional call to Anthropic for the narration.
 
 ## Minimum adoption
 
