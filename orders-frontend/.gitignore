@@ -43,3 +43,7 @@ __screenshots__/
 .DS_Store
 Thumbs.db
 src/app/generated/
+
+# Day 12 — the generated API client is a BUILD OUTPUT of the backend's spec (npm run generate:api).
+# Committing it would let a stale client mask exactly the compile break SyncTank exists to show.
+/src/app/generated/

@@ -3,6 +3,11 @@ name: Contract Spec Pipeline
 on:
   pull_request:
     branches: [main]
+    # Day 12 — labeled/unlabeled so that adding or removing `contract:breaking-approved`
+    # re-evaluates the gate. Every label event re-runs the WHOLE job on purpose: a job skipped
+    # by an `if:` reports as passing to branch protection, so filtering by label name here
+    # would let any unrelated label turn a red required check green.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -11,8 +16,8 @@ concurrency:
   group: contract-${{ github.ref }}
   cancel-in-progress: true
 
-# Needed so the baseline-commit step (Phase 4) may push to main, and so the
-# Day 05 report step (below) may post a comment on the pull request
+# contents: write   — "Commit baseline file to repo" pushes to main
+# pull-requests: write — the contract-check action posts (and updates) its report comment
 permissions:
   contents: write
   pull-requests: write
@@ -24,15 +29,10 @@ jobs:
     steps:
       - name: Checkout synctank
         uses: actions/checkout@v5
-        # one checkout brings in orders-backend/, contract-platform/, and docker-compose.yml together
 
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
-        # ubuntu-latest does NOT ship rg preinstalled — confirmed by a real CI failure
-        # ("Cannot run program 'rg': Exec failed, error: 2 (No such file or directory)")
-        # from UsageScanner's ProcessBuilder. Needed before "Seed client registry" and
-        # "Generate AI change report" below.
-
+      # orders-backend needs Java to generate its spec, orders-frontend needs Node to compile
+      # against it. contract-platform's own Java, ripgrep, MinIO and Postgres are the Day 12
+      # action's business now, not this workflow's.
       - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
@@ -47,66 +47,6 @@ jobs:
           cache: npm
           cache-dependency-path: orders-frontend/package-lock.json
 
-      # ---------- Day 06: Postgres is now a hard startup dependency ----------
-      # contract-platform gained a DataSource today. If Postgres isn't accepting
-      # connections BEFORE the jar starts, HikariCP fails initialisation and the
-      # process exits — which would look identical to "the app is just slow to boot".
-      # Hence: start both, wait for both, then start the platform.
-      - name: Start MinIO and Postgres
-        run: |
-          docker compose up -d minio postgres
-
-          echo "Waiting for MinIO..."
-          MINIO_OK=0
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
-              echo "MinIO is up"; MINIO_OK=1; break
-            fi
-            sleep 2
-          done
-          if [ "$MINIO_OK" != "1" ]; then
-            echo "MinIO never became healthy"; docker compose logs minio; exit 1
-          fi
-
-          echo "Waiting for Postgres..."
-          PG_OK=0
-          for i in $(seq 1 30); do
-            if docker compose exec -T postgres pg_isready -U platform -d contract_platform > /dev/null 2>&1; then
-              echo "Postgres is up"; PG_OK=1; break
-            fi
-            sleep 2
-          done
-          if [ "$PG_OK" != "1" ]; then
-            echo "Postgres never became healthy"; docker compose logs postgres; exit 1
-          fi
-
-      - name: Build and start contract-platform
-        working-directory: contract-platform
-        env:
-          S3_ENDPOINT: http://localhost:9000
-          S3_ACCESS_KEY: platform
-          S3_SECRET_KEY: platform123
-          S3_BUCKET: specs
-          # Day 06 — client registry store. Defaults in application.yaml already point here,
-          # but they are set explicitly so a future change of compose ports is a one-file edit.
-          DB_URL: jdbc:postgresql://localhost:5433/contract_platform
-          DB_USER: platform
-          DB_PASSWORD: platform123
-          # Day 05 — required so the AI report step later in this job can reach Anthropic.
-          # Set this as a repository secret: Settings → Secrets and variables → Actions.
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          mvn -q -DskipTests package
-          nohup java -jar target/contract-platform-*.jar > platform.log 2>&1 &
-          echo "Waiting for contract-platform..."
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8081/health > /dev/null; then
-              echo "contract-platform is up"; exit 0
-            fi
-            sleep 2
-          done
-          echo "contract-platform never became healthy"; cat platform.log; exit 1
-
       - name: Generate OpenAPI spec
         working-directory: orders-backend
         run: mvn -q verify
@@ -117,253 +57,44 @@ jobs:
           npm ci
           npm run generate:api
 
+      # Level 1 — the compile-time contract check. A breaking change fails HERE, with the file
+      # and line of every broken use site. That is the product's first promise, and the action
+      # below does not replace it.
       - name: Build frontend against candidate contract
         working-directory: orders-frontend
         run: npm run build
 
-      # ---------- if: always() below here through "Run contract diff" ----------
-      # These steps do NOT depend on the frontend build succeeding — the diff only
-      # needs orders-backend/target/openapi.json, produced two steps ago. Without if: always(),
-      # a BREAKING change that fails "Build frontend against candidate contract" would skip
-      # severity classification entirely — exactly the case where you need it most.
-
-      - name: Upload spec (versioned by commit)
-        if: always()
-        run: |
-          curl -fS -X PUT \
-            -H "Content-Type: application/json" \
-            --data-binary @orders-backend/target/openapi.json \
-            "http://localhost:8081/specs/orders-backend/${GITHUB_SHA}"
-          echo ""
-          echo "Stored spec for commit ${GITHUB_SHA}"
-
-      - name: Save spec as workflow artifact
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: openapi-${{ github.sha }}
-          path: orders-backend/target/openapi.json
-
-      # ---------- Day 06: Consumer Impact Radar ----------
-      # MUST run before "Run contract diff", because the diff response is enriched from
-      # whatever is in the registry at the moment the diff is computed.
+      # ---------- Day 12: Levels 1-2 as one reusable step ----------
+      # Everything that used to be eleven inline steps (start MinIO + Postgres, build and start
+      # contract-platform, seed the registry, seed telemetry, diff, report, comment, three gates,
+      # two artifacts) is now .github/actions/contract-check. A second team adopts the same
+      # thing with `uses: jgantayat/synctank/.github/actions/contract-check@v1`.
       #
-      # MUST seed from contract/openapi.baseline.json, NOT target/openapi.json. The registry
-      # describes what the DEPLOYED frontend compiles against. Seeding from the candidate spec
-      # would mean a removed field has no registry row, so the radar would find zero consumers
-      # and downgrade a real breaking change to SAFE_WITH_NOTE — inverting the feature silently.
-      #
-      # if: always() for the same reason as the steps above: a BREAKING change fails the
-      # frontend build, and that is precisely when the blast radius matters most.
-      - name: Seed client registry from baseline contract
-        if: always()
-        run: |
-          if [ ! -f orders-backend/contract/openapi.baseline.json ]; then
-            echo "No baseline yet — nothing to seed the registry from, skipping."
-            exit 0
-          fi
-
-          FRONTEND_SRC="${{ github.workspace }}/orders-frontend/src"
-
-          jq -n \
-            --rawfile spec orders-backend/contract/openapi.baseline.json \
-            --arg src "$FRONTEND_SRC" \
-            --arg version "${GITHUB_SHA}" \
-            '{appName:"customer-portal", team:"Team Checkout", repo:"jgantayat/synctank",
-              clientVersion:$version, frontendSrcPath:$src, baselineSpec:$spec}' > /tmp/seed.json
-
-          curl -fS -X POST http://localhost:8081/registry/apps \
-            -H "Content-Type: application/json" \
-            --data-binary @/tmp/seed.json \
-            -o /tmp/seed-result.json
-          echo "----- Registry seed result -----"
-          cat /tmp/seed-result.json
-          echo ""
-
-      - name: Seed demo telemetry
-        if: always()
-        run: |
-          if [ ! -f /tmp/seed-result.json ]; then
-            echo "Registry was not seeded — skipping telemetry."
-            exit 0
-          fi
-          # SEEDED, NOT MEASURED. Phase 5's HandlerInterceptor is not built yet.
-          # State this on the pitch slide; do not let anyone infer these are live numbers.
-          curl -fS -X PUT http://localhost:8081/registry/apps/customer-portal/traffic \
-            -H "Content-Type: application/json" \
-            -d '{"GET /api/orders/{id}": 12000, "GET /api/orders": 3400, "POST /api/orders": 800}'
-          echo ""
-
-      - name: Run contract diff (baseline vs candidate)
-        if: always()
-        run: |
-          if [ ! -f orders-backend/contract/openapi.baseline.json ]; then
-            echo "No baseline yet on this repo — nothing to diff against, skipping."
-            exit 0
-          fi
-
-          jq -n \
-            --rawfile baseline orders-backend/contract/openapi.baseline.json \
-            --rawfile candidate orders-backend/target/openapi.json \
-            '{baseline: $baseline, candidate: $candidate}' > /tmp/diff-request.json
-
-          curl -fS -X POST -H "Content-Type: application/json" \
-            --data-binary @/tmp/diff-request.json \
-            http://localhost:8081/diff \
-            -o diff-report.json
-
-          echo "----- Diff report -----"
-          cat diff-report.json
-          echo ""
-
-          # `// empty` guards the Day-05 trap where jq -r renders a JSON null as the
-          # four-character string "null", which is truthy in every shell comparison.
-          SEVERITY=$(jq -r '.highestSeverity // empty' diff-report.json)
-          EFFECTIVE=$(jq -r '.effectiveSeverity // empty' diff-report.json)
-
-          echo "Classified severity: $SEVERITY"
-          echo "Effective severity (after Impact Radar): $EFFECTIVE"
-          echo "CONTRACT_SEVERITY=$SEVERITY" >> "$GITHUB_ENV"
-          echo "CONTRACT_EFFECTIVE_SEVERITY=$EFFECTIVE" >> "$GITHUB_ENV"
-
-      - name: Save diff report as artifact
-        if: always()
-        uses: actions/upload-artifact@v5
+      # !cancelled(), not always(): runs when the frontend build FAILED (a breaking change is
+      # exactly when the blast radius matters most — the Day 05 lesson), but not when a newer
+      # push cancelled this run.
+      - name: Contract check
+        id: contract
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/contract-check
         with:
-          name: diff-report-${{ github.sha }}
-          path: diff-report.json
+          candidate-spec: orders-backend/target/openapi.json
+          baseline-spec: orders-backend/contract/openapi.baseline.json
+          spec-key: orders-backend
+          frontend-src: orders-frontend/src
+          consumer-app-name: customer-portal
+          consumer-team: Team Checkout
+          # SEEDED, NOT MEASURED — the PR comment says so. Phase 5's interceptor is not built.
+          demo-telemetry: '{"GET /api/orders/{id}": 12000, "GET /api/orders": 3400, "POST /api/orders": 800}'
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Default, stated for the reader: fail PRs only. Failing a push to main skipped the
+          # baseline commit below and wedged every later PR (Day 12 F2).
+          fail-on-breaking: pull-request
 
-      # ---------- Day 05 — AI change report (Day 06: now carries radar data) ----------
-      # Gated on CONTRACT_SEVERITY (the classifier's verdict), not the effective one:
-      # a change downgraded to SAFE_WITH_NOTE still deserves a PR comment explaining
-      # why it was downgraded. Silence would be worse than a comment.
-
-      - name: Generate AI change report
-        if: always() && (env.CONTRACT_SEVERITY == 'BREAKING' || env.CONTRACT_SEVERITY == 'DANGEROUS' || env.CONTRACT_SEVERITY == 'ADDITIVE')
-        working-directory: contract-platform
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          FRONTEND_SRC="${{ github.workspace }}/orders-frontend/src"
-          # Day 06: built with jq rather than shell interpolation. The diff body now contains
-          # radar verdict strings with apostrophes and braces; embedding it by hand into a
-          # double-quoted -d argument was already fragile and would now reliably corrupt the JSON.
-          jq -n \
-            --slurpfile diff ../diff-report.json \
-            --arg src "$FRONTEND_SRC" \
-            '{diff: $diff[0], frontendSrcPath: $src}' > /tmp/report-request.json
-
-          curl -s --max-time 60 -X POST http://localhost:8081/report \
-            -H "Content-Type: application/json" \
-            --data-binary @/tmp/report-request.json \
-            -o ../report.json
-          echo "----- Change report -----"
-          cat ../report.json
-          echo ""
-
-      - name: Post change report as PR comment
-        if: always() && (env.CONTRACT_SEVERITY == 'BREAKING' || env.CONTRACT_SEVERITY == 'DANGEROUS' || env.CONTRACT_SEVERITY == 'ADDITIVE') && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            let report;
-            try {
-              report = JSON.parse(fs.readFileSync('report.json', 'utf8'));
-            } catch (e) {
-              console.log('report.json missing or not valid JSON — skipping comment:', e.message);
-              return;
-            }
-
-            // report.json can be valid JSON that ISN'T a report — e.g. Spring Boot's
-            // own error body ({"status":500,"error":"Internal Server Error",...}) when the
-            // /report call itself failed. Detect that shape explicitly instead of assuming
-            // success just because JSON.parse didn't throw.
-            if (!report || !Array.isArray(report.changes)) {
-              console.log('report.json was not a valid report (likely an upstream error) — skipping comment. Contents:', JSON.stringify(report));
-              return;
-            }
-
-            // Day 06 — radar findings, keyed by the same location string the classifier emits.
-            const impactByLocation = {};
-            for (const assessment of (report.impact || [])) {
-              impactByLocation[assessment.location] = assessment;
-            }
-
-            const blastRadius = (location) => {
-              const assessment = impactByLocation[location];
-              if (!assessment) return '';
-              const consumers = assessment.consumers || [];
-              if (consumers.length === 0) {
-                return `\n  - **Blast radius:** no registered consumer — _${assessment.verdict}_`;
-              }
-              const rows = consumers.map(c =>
-                `${c.appName} (${c.team || 'unknown team'}) — screens: ${(c.screens || []).join(', ') || 'unmapped'}` +
-                (c.callsPerDay ? `, ~${c.callsPerDay.toLocaleString()} calls/day` : '')
-              ).join('; ');
-              const escalated = assessment.classifiedSeverity !== assessment.effectiveSeverity
-                ? ` → **${assessment.effectiveSeverity}** (_${assessment.verdict}_)`
-                : '';
-              return `\n  - **Blast radius:** ${rows}${escalated}`;
-            };
-
-            const changeLines = report.changes.map(c =>
-              `- **${c.severity}** \`${c.location}\` — ${c.plainEnglish}` +
-              (c.usageHits.length
-                ? `\n  - Used in: ${c.usageHits.map(u => `\`${u.split('/').pop()}\``).join(', ')}`
-                : '\n  - No usages found in orders-frontend/src') +
-              blastRadius(c.location)
-            ).join('\n');
-
-            const patchBlock = report.suggestedMigrationPatch
-              ? `\n\n**Suggested migration:**\n\`\`\`diff\n${report.suggestedMigrationPatch}\n\`\`\`\n\n_Advisory only — review before applying._`
-              : '';
-
-            const verdictLine = process.env.CONTRACT_SEVERITY !== process.env.CONTRACT_EFFECTIVE_SEVERITY
-              ? `\n\n> **Impact Radar re-weighted this PR:** classified \`${process.env.CONTRACT_SEVERITY}\` → effective \`${process.env.CONTRACT_EFFECTIVE_SEVERITY}\`.`
-              : '';
-
-            const body = `### 🤖 Contract change report\n\n${report.summary}${verdictLine}\n\n${changeLines}${patchBlock}\n\n<sub>Call volumes are seeded demo telemetry, not live measurements.</sub>`;
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body
-            });
-
-      # ---------- Day 06: gates now read the EFFECTIVE severity ----------
-      # This is the behavioural change of the day. A BREAKING change with zero registered
-      # consumers no longer blocks the merge; a DANGEROUS change on a high-traffic endpoint
-      # now does. The classifier's own verdict is still printed and still on the PR comment,
-      # so nothing is hidden — only the merge decision moved.
-
-      - name: Note downgraded change
-        if: env.CONTRACT_EFFECTIVE_SEVERITY == 'SAFE_WITH_NOTE'
-        run: echo "::notice::Contract diff classified this change as ${{ env.CONTRACT_SEVERITY }}, but the Consumer Impact Radar found no registered consumer. Merge is unblocked; see the PR comment."
-
-      - name: Warn on dangerous change
-        if: env.CONTRACT_EFFECTIVE_SEVERITY == 'DANGEROUS'
-        run: echo "::warning::Contract diff classified this change as DANGEROUS — type-safe but may change runtime behaviour. Review diff-report.json before merging."
-
-      - name: Fail PR on breaking change
-        if: env.CONTRACT_EFFECTIVE_SEVERITY == 'BREAKING'
-        run: |
-          echo "::error::Impact Radar effective severity is BREAKING (classifier said ${{ env.CONTRACT_SEVERITY }}). See diff-report.json artifact and the PR comment for the affected consumers."
-          exit 1
-
-      # ---------- main-branch-only steps (Phase 4) ----------
-
-      - name: Publish baseline (main only)
-        if: github.event_name == 'push'
-        run: |
-          curl -fS -X PUT \
-            -H "Content-Type: text/plain" \
-            --data "${GITHUB_SHA}" \
-            "http://localhost:8081/specs/orders-backend/baseline"
-          echo ""
-          echo "Baseline now points at ${GITHUB_SHA}"
-
+      # ---------- main-branch-only ----------
+      # "Publish baseline" (PUT /specs/.../baseline) is gone: it wrote to a MinIO container that
+      # was destroyed with the runner seconds later (Day 12 F6). The committed file below has
+      # always been the real baseline — it is what the next PR diffs against.
       - name: Commit baseline file to repo (main only)
         if: github.event_name == 'push'
         run: |
@@ -377,12 +108,6 @@ jobs:
           git add orders-backend/contract/openapi.baseline.json
           git commit -m "chore: publish contract baseline for ${GITHUB_SHA} [skip ci]"
           git push
-
-      # ---------- debugging aid ----------
-
-      - name: Dump platform log on failure
-        if: failure()
-        run: cat contract-platform/platform.log || true
 
   # ---------- Day 10: the contract-platform image ----------
   # A second, independent job — it runs in parallel with spec-pipeline and shares nothing with

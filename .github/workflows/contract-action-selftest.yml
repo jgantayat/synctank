@@ -1,0 +1,138 @@
+name: Contract Action Self-test
+
+# Day 12 — proves the contract-check action against fixtures with KNOWN answers, independently of
+# orders-backend. contract.yml proves it works for us; this proves it behaves as documented for
+# an adopter: no frontend, no AI key, several APIs in one job, and every gate mode.
+#
+# Runs only when the action or the platform it builds changes.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/actions/contract-check/**'
+      - '.github/workflows/contract-action-selftest.yml'
+      - 'contract-platform/src/main/**'
+      - 'contract-platform/pom.xml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-selftest-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FIXTURES: contract-platform/src/test/resources/diff-fixtures
+
+jobs:
+  comment-renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Unit-test the PR comment renderer
+        run: node --test .github/actions/contract-check/test/comment.test.js
+
+  action-scenarios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # 1 — identical specs. Day 12 F1: an empty diff is NONE, not ADDITIVE, and no report runs.
+      - name: "Scenario 1: no change"
+        id: same
+        uses: ./.github/actions/contract-check
+        with:
+          candidate-spec: ${{ env.FIXTURES }}/additive-before.json
+          baseline-spec: ${{ env.FIXTURES }}/additive-before.json
+          spec-key: selftest-same
+          comment-on-pr: 'false'
+          upload-artifacts: 'false'
+
+      # 2 — an added optional field and endpoint.
+      - name: "Scenario 2: additive"
+        id: additive
+        uses: ./.github/actions/contract-check
+        with:
+          candidate-spec: ${{ env.FIXTURES }}/additive-after.json
+          baseline-spec: ${{ env.FIXTURES }}/additive-before.json
+          spec-key: selftest-additive
+          comment-on-pr: 'false'
+          upload-artifacts: 'false'
+
+      # 3 — breaking, NO consumer evidence, gate not enforced. Day 12 F3: the radar reads an
+      # empty registry as "no consumers" and says SAFE_WITH_NOTE; the gate must still say BREAKING.
+      - name: "Scenario 3: breaking, report only"
+        id: breaking
+        uses: ./.github/actions/contract-check
+        with:
+          candidate-spec: ${{ env.FIXTURES }}/breaking-after.json
+          baseline-spec: ${{ env.FIXTURES }}/breaking-before.json
+          spec-key: selftest-breaking
+          comment-on-pr: 'false'
+          fail-on-breaking: never
+
+      # 4 — the same change with the gate enforced. The step MUST fail; continue-on-error keeps
+      # the job going so the assertion below can check that it did.
+      - name: "Scenario 4: breaking, enforced"
+        id: enforced
+        continue-on-error: true
+        uses: ./.github/actions/contract-check
+        with:
+          candidate-spec: ${{ env.FIXTURES }}/breaking-after.json
+          baseline-spec: ${{ env.FIXTURES }}/breaking-before.json
+          spec-key: selftest-enforced
+          comment-on-pr: 'false'
+          upload-artifacts: 'false'
+          fail-on-breaking: always
+
+      # 5 — a repository that has never published a baseline.
+      - name: "Scenario 5: no baseline yet"
+        id: nobaseline
+        uses: ./.github/actions/contract-check
+        with:
+          candidate-spec: ${{ env.FIXTURES }}/additive-after.json
+          baseline-spec: does/not/exist/openapi.baseline.json
+          spec-key: selftest-nobaseline
+          comment-on-pr: 'false'
+          upload-artifacts: 'false'
+
+      - name: Assert every scenario
+        env:
+          S1: ${{ steps.same.outputs.status }}|${{ steps.same.outputs.change-count }}|${{ steps.same.outputs.severity }}|${{ steps.same.outputs.gate-severity }}|${{ steps.same.outputs.report }}
+          S2: ${{ steps.additive.outputs.severity }}|${{ steps.additive.outputs.gate-severity }}|${{ steps.additive.outputs.registry-seeded }}
+          S3: ${{ steps.breaking.outputs.severity }}|${{ steps.breaking.outputs.gate-severity }}|${{ steps.breaking.outcome }}
+          S3_EFFECTIVE: ${{ steps.breaking.outputs.effective-severity }}
+          S4: ${{ steps.enforced.outcome }}|${{ steps.enforced.outputs.gate-severity }}
+          S5: ${{ steps.nobaseline.outputs.status }}|${{ steps.nobaseline.outcome }}
+          S3_REPORT: ${{ steps.breaking.outputs.report }}
+        run: |
+          FAILED=0
+          check() {
+            if [ "$2" = "$3" ]; then echo "ok    $1  ($3)"
+            else echo "FAIL  $1  expected '$3', got '$2'"; FAILED=1; fi
+          }
+          check "1 no change -> NONE, no report"             "$S1" "diffed|0|NONE|NONE|"
+          check "2 additive -> ADDITIVE, no radar evidence"  "$S2" "ADDITIVE|ADDITIVE|false"
+          check "3 breaking, report only -> gate says BREAKING, step passes" \
+                "$S3" "BREAKING|BREAKING|success"
+          # The radar, with an empty registry, downgrades every BREAKING record (to SAFE_WITH_NOTE).
+          # Whatever it settles on, it must NOT be what the gate used — that is the F3 fix.
+          if [ "$S3_EFFECTIVE" != "BREAKING" ] && [ -n "$S3_EFFECTIVE" ]; then
+            echo "ok    3 radar without evidence said $S3_EFFECTIVE; the gate ignored it"
+          else
+            echo "FAIL  3 expected the radar to downgrade, got '$S3_EFFECTIVE'"; FAILED=1
+          fi
+          check "4 enforced breaking -> step fails"          "$S4" "failure|BREAKING"
+          check "5 no baseline -> passes"                    "$S5" "no-baseline|success"
+
+          # With no AI key the report must still exist: the deterministic fallback (Day 05 design).
+          if [ -n "$S3_REPORT" ] && jq -e '.changes | length > 0' "$S3_REPORT" > /dev/null; then
+            echo "ok    3 report produced without an AI key ($(jq -r .summary "$S3_REPORT" | cut -c1-60)...)"
+          else
+            echo "FAIL  3 no usable report.json"; FAILED=1
+          fi
+          exit "$FAILED"
