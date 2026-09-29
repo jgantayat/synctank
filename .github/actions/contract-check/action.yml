@@ -1,0 +1,208 @@
+name: SyncTank Contract Check
+description: >-
+  Diff a candidate OpenAPI spec against the committed baseline, classify every change
+  (ADDITIVE / DANGEROUS / BREAKING), weigh it against the consumers that really compile
+  against it, explain it on the pull request, and fail on an unapproved breaking change.
+author: Team SyncTank
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  candidate-spec:
+    description: Path to the OpenAPI JSON this commit produces, e.g. orders-backend/target/openapi.json.
+    required: true
+  baseline-spec:
+    description: Path to the committed baseline OpenAPI JSON. If it does not exist yet, the check reports "no baseline" and passes.
+    required: true
+  spec-key:
+    description: Stable name for this API (letters, digits, . _ -). Used in the comment marker and the artifact name.
+    required: true
+  frontend-src:
+    description: >-
+      Source directory of a consumer that compiles against the generated client. Enables the
+      Impact Radar. Empty means no consumer evidence, and the gate uses the classifier's severity.
+    required: false
+    default: ''
+  consumer-app-name:
+    description: Name the consumer is registered under. Required when frontend-src is set.
+    required: false
+    default: ''
+  consumer-team:
+    description: Owning team of the consumer, shown in the blast radius.
+    required: false
+    default: ''
+  consumer-repo:
+    description: Repository of the consumer.
+    required: false
+    default: ${{ github.repository }}
+  demo-telemetry:
+    description: >-
+      Optional JSON object of endpoint -> calls/day, e.g. {"GET /api/orders/{id}": 12000}.
+      SEEDED, NOT MEASURED; the PR comment labels it as such.
+    required: false
+    default: ''
+  anthropic-api-key:
+    description: Anthropic API key for the plain-English narration. Empty means a deterministic report only.
+    required: false
+    default: ''
+  github-token:
+    description: Token used to write the PR comment. Needs pull-requests write.
+    required: false
+    default: ${{ github.token }}
+  comment-on-pr:
+    description: Post (and keep updated) one report comment per API on the pull request.
+    required: false
+    default: 'true'
+  fail-on-breaking:
+    description: When a BREAKING gate fails the job - pull-request (default), always, or never.
+    required: false
+    default: pull-request
+  breaking-approval-label:
+    description: A pull-request label that turns a BREAKING failure into a recorded warning. Empty disables approvals.
+    required: false
+    default: 'contract:breaking-approved'
+  platform-port:
+    description: Local port for the throwaway contract-platform.
+    required: false
+    default: '18081'
+  upload-artifacts:
+    description: Upload the candidate spec, diff report and change report as one workflow artifact.
+    required: false
+    default: 'true'
+
+outputs:
+  status:
+    description: no-baseline or diffed
+    value: ${{ steps.diff.outputs.status }}
+  changed:
+    description: Whether openapi-diff found any difference at all
+    value: ${{ steps.diff.outputs.changed }}
+  change-count:
+    description: Number of classified changes
+    value: ${{ steps.diff.outputs.change-count }}
+  severity:
+    description: Classifier verdict - ADDITIVE, DANGEROUS, BREAKING or NONE
+    value: ${{ steps.diff.outputs.severity }}
+  effective-severity:
+    description: Verdict after the Impact Radar - SAFE_WITH_NOTE, ADDITIVE, DANGEROUS, BREAKING or NONE
+    value: ${{ steps.diff.outputs.effective-severity }}
+  registry-seeded:
+    description: true when the Impact Radar held real usage rows for the consumer
+    value: ${{ steps.diff.outputs.registry-seeded }}
+  gate-severity:
+    description: The severity the gate acted on
+    value: ${{ steps.diff.outputs.gate-severity }}
+  diff-report:
+    description: Path to diff-report.json
+    value: ${{ steps.diff.outputs.diff-report }}
+  report:
+    description: Path to report.json, empty when no report was produced
+    value: ${{ steps.report.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    # Every input reaches a script through env:, never by pasting ${{ inputs.* }} into run:.
+    # A spec-key or team name is then data, not shell code (GitHub's script-injection guidance).
+
+    - name: Set up Java 21 for contract-platform
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '21'
+
+    - name: Start contract-platform
+      id: platform
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PLATFORM_PORT: ${{ inputs.platform-port }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: bash "$ACTION_PATH/scripts/start-platform.sh"
+
+    - name: Classify contract changes
+      id: diff
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PLATFORM_URL: ${{ steps.platform.outputs.url }}
+        INPUT_CANDIDATE_SPEC: ${{ inputs.candidate-spec }}
+        INPUT_BASELINE_SPEC: ${{ inputs.baseline-spec }}
+        INPUT_SPEC_KEY: ${{ inputs.spec-key }}
+        INPUT_FRONTEND_SRC: ${{ inputs.frontend-src }}
+        INPUT_CONSUMER_APP_NAME: ${{ inputs.consumer-app-name }}
+        INPUT_CONSUMER_TEAM: ${{ inputs.consumer-team }}
+        INPUT_CONSUMER_REPO: ${{ inputs.consumer-repo }}
+        INPUT_DEMO_TELEMETRY: ${{ inputs.demo-telemetry }}
+      run: bash "$ACTION_PATH/scripts/diff.sh"
+
+    - name: Explain contract changes
+      id: report
+      if: steps.diff.outputs.status == 'diffed' && steps.diff.outputs.change-count != '0'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PLATFORM_URL: ${{ steps.platform.outputs.url }}
+        INPUT_SPEC_KEY: ${{ inputs.spec-key }}
+        INPUT_FRONTEND_SRC: ${{ inputs.frontend-src }}
+        DIFF_REPORT: ${{ steps.diff.outputs.diff-report }}
+      run: bash "$ACTION_PATH/scripts/report.sh"
+
+    - name: Upload contract artifacts
+      if: always() && inputs.upload-artifacts == 'true' && steps.platform.outcome == 'success'
+      uses: actions/upload-artifact@v5
+      with:
+        name: contract-check-${{ inputs.spec-key }}-${{ github.sha }}
+        path: ${{ runner.temp }}/synctank-contract-check/${{ inputs.spec-key }}/*.json
+        if-no-files-found: ignore
+
+    - name: Post contract report on the pull request
+      if: >-
+        always() && steps.diff.outcome == 'success' && steps.diff.outputs.status == 'diffed'
+        && inputs.comment-on-pr == 'true'
+        && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
+      uses: actions/github-script@v7
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SPEC_KEY: ${{ inputs.spec-key }}
+        CHANGE_COUNT: ${{ steps.diff.outputs.change-count }}
+        SEVERITY: ${{ steps.diff.outputs.severity }}
+        EFFECTIVE_SEVERITY: ${{ steps.diff.outputs.effective-severity }}
+        GATE_SEVERITY: ${{ steps.diff.outputs.gate-severity }}
+        REGISTRY_SEEDED: ${{ steps.diff.outputs.registry-seeded }}
+        DIFF_REPORT_PATH: ${{ steps.diff.outputs.diff-report }}
+        REPORT_PATH: ${{ steps.report.outputs.report }}
+        FRONTEND_LABEL: ${{ inputs.frontend-src }}
+        DEMO_TELEMETRY: ${{ inputs.demo-telemetry }}
+        AI_CONFIGURED: ${{ inputs.anthropic-api-key != '' }}
+        APPROVAL_LABEL: ${{ inputs.breaking-approval-label }}
+        BREAKING_APPROVED: ${{ inputs.breaking-approval-label != '' && contains(github.event.pull_request.labels.*.name, inputs.breaking-approval-label) }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const run = require(`${process.env.ACTION_PATH}/scripts/comment.js`);
+          await run({ github, context, core });
+
+    - name: Contract gate
+      if: always() && steps.diff.outcome == 'success'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        STATUS: ${{ steps.diff.outputs.status }}
+        CHANGE_COUNT: ${{ steps.diff.outputs.change-count }}
+        SEVERITY: ${{ steps.diff.outputs.severity }}
+        GATE_SEVERITY: ${{ steps.diff.outputs.gate-severity }}
+        REGISTRY_SEEDED: ${{ steps.diff.outputs.registry-seeded }}
+        INPUT_SPEC_KEY: ${{ inputs.spec-key }}
+        FAIL_ON_BREAKING: ${{ inputs.fail-on-breaking }}
+        APPROVAL_LABEL: ${{ inputs.breaking-approval-label }}
+        BREAKING_APPROVED: ${{ inputs.breaking-approval-label != '' && contains(github.event.pull_request.labels.*.name, inputs.breaking-approval-label) }}
+      run: bash "$ACTION_PATH/scripts/gate.sh"
+
+    - name: Dump contract-platform log (on failure)
+      if: >-
+        always() && (steps.platform.outcome == 'failure' || steps.diff.outcome == 'failure'
+        || steps.report.outcome == 'failure')
+      shell: bash
+      run: tail -n 200 "${RUNNER_TEMP}/synctank-contract-check/platform.log" || true

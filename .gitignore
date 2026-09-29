@@ -27,4 +27,3 @@ id_rsa*
 # ARNs, a personal email and a home IP have no business in a public repo.
 infra/aws/deploy/00-env.sh
 infra/aws/deploy/01-provisioned.sh
-.idea/
