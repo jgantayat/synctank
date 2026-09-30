@@ -2,7 +2,11 @@ package com.synctank.platform.diff;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.parameters.Parameter;
 import org.openapitools.openapidiff.core.model.ChangedOpenApi;
+import org.openapitools.openapidiff.core.model.ChangedOperation;
+import org.openapitools.openapidiff.core.model.ChangedParameter;
+import org.openapitools.openapidiff.core.model.ChangedParameters;
 import org.openapitools.openapidiff.core.model.Endpoint;
 import org.springframework.stereotype.Component;
 
@@ -35,6 +39,79 @@ public class SeverityClassifier {
         }
 
         return records;
+    }
+
+    /**
+     * Pre-Day-13 (B1) — parameter changes on an endpoint that still exists.
+     *
+     * Every rule above looks at component SCHEMAS, plus endpoints added or removed outright.
+     * An endpoint that survives but changes its parameters was invisible: a new required query
+     * parameter on GET /api/orders produced no record at all, the diff reported nothing, and the
+     * gate passed — while every generated-client call site stopped compiling (the Angular
+     * service method gains a required argument) and every other caller started getting 400s.
+     *
+     * openapi-diff already computes this; the verdict per parameter is its own
+     * isIncompatible(), so there is no second opinion here to drift from it.
+     * Location is the endpoint ("GET /api/orders") — the same format as ENDPOINT_ADDED/REMOVED,
+     * so the Impact Radar's ENDPOINT usage rows and seeded traffic attach to it unchanged.
+     */
+    public List<ChangeRecord> classifyParameterChanges(ChangedOpenApi diff) {
+        List<ChangeRecord> records = new ArrayList<>();
+
+        for (ChangedOperation operation : diff.getChangedOperations()) {
+            ChangedParameters parameters = operation.getParameters();
+            if (parameters == null) {
+                continue;
+            }
+            String loc = operation.getHttpMethod() + " " + operation.getPathUrl();
+
+            for (Parameter removed : parameters.getMissing()) {
+                records.add(new ChangeRecord(
+                        Severity.BREAKING,
+                        "PARAMETER_REMOVED",
+                        loc,
+                        describeParameter(removed) + " was removed from " + loc
+                                + " — the generated client method loses that argument, so every call "
+                                + "site passing it fails to compile."));
+            }
+
+            for (Parameter added : parameters.getIncreased()) {
+                if (Boolean.TRUE.equals(added.getRequired())) {
+                    records.add(new ChangeRecord(
+                            Severity.BREAKING,
+                            "REQUIRED_PARAMETER_ADDED",
+                            loc,
+                            describeParameter(added) + " was added to " + loc + " as REQUIRED — "
+                                    + "existing calls do not send it and will be rejected; the "
+                                    + "generated client method gains a mandatory argument."));
+                } else {
+                    records.add(new ChangeRecord(
+                            Severity.ADDITIVE,
+                            "PARAMETER_ADDED",
+                            loc,
+                            describeParameter(added) + " was added to " + loc
+                                    + " as optional — existing calls are unaffected."));
+                }
+            }
+
+            for (ChangedParameter changed : parameters.getChanged()) {
+                if (changed.isIncompatible()) {
+                    records.add(new ChangeRecord(
+                            Severity.BREAKING,
+                            "PARAMETER_CHANGED",
+                            loc,
+                            "Parameter '" + changed.getName() + "' (in " + changed.getIn() + ") of "
+                                    + loc + " changed incompatibly (e.g. became required, or changed "
+                                    + "type or style) — existing calls may be rejected."));
+                }
+            }
+        }
+
+        return records;
+    }
+
+    private static String describeParameter(Parameter parameter) {
+        return "Parameter '" + parameter.getName() + "' (in " + parameter.getIn() + ")";
     }
 
     /**

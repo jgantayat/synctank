@@ -48,7 +48,13 @@ function resolveReport(report, diff) {
   };
 }
 
-function blastRadius(assessment) {
+function blastRadius(assessment, env) {
+  // v1.0.1 — with no consumer evidence the gate IGNORES the radar (Day 12 F3), so the radar's
+  // "downgraded to SAFE_WITH_NOTE — the merge is unblocked" must not be printed as if it counted.
+  // It contradicted the Gate line directly below it on the adopter demo PR.
+  if (env.REGISTRY_SEEDED !== 'true') {
+    return '\n  - **Blast radius:** not assessed — no consumer evidence for this run, so the gate used the classifier\'s severity';
+  }
   if (!assessment) return '';
   const consumers = assessment.consumers || [];
   if (consumers.length === 0) {
@@ -113,27 +119,29 @@ function buildBody(env, rawReport, diff) {
   const changeLines = report.changes.map(c =>
     `- **${c.severity}** \`${c.location}\` — ${c.plainEnglish}` +
     usageLine(c, env) +
-    blastRadius(impactByLocation[c.location])
+    blastRadius(impactByLocation[c.location], env)
   ).join('\n');
 
   const patchBlock = report.suggestedMigrationPatch
     ? `\n\n**Suggested migration:**\n\`\`\`diff\n${report.suggestedMigrationPatch}\n\`\`\`\n\n_Advisory only — review before applying._`
     : '';
 
-  const verdictLine = env.SEVERITY && env.EFFECTIVE_SEVERITY && env.SEVERITY !== env.EFFECTIVE_SEVERITY
+  // v1.0.1 — only when the radar's verdict is the one the gate used.
+  const verdictLine = env.REGISTRY_SEEDED === 'true'
+    && env.SEVERITY && env.EFFECTIVE_SEVERITY && env.SEVERITY !== env.EFFECTIVE_SEVERITY
     ? `\n\n> **Impact Radar re-weighted this PR:** classified \`${env.SEVERITY}\` → effective \`${env.EFFECTIVE_SEVERITY}\`.`
     : '';
 
-  const aiNote = env.AI_CONFIGURED === 'true' || report.degraded
-    ? ''
-    : '\n\n_AI narration is not configured for this repository (no `anthropic-api-key`)._';
+  // v1.0.1 — the separate "AI narration is not configured" note is gone. The platform now says
+  // so itself in the summary (and no longer attempts the call), so the comment said it twice,
+  // once as a failure that never happened.
 
   const telemetryNote = env.DEMO_TELEMETRY
     ? '\n\n<sub>Call volumes are seeded demo telemetry, not live measurements.</sub>'
     : '';
 
   return `${marker(env.SPEC_KEY)}\n### 🤖 Contract change report — \`${env.SPEC_KEY}\`\n\n` +
-    `${report.summary}${verdictLine}${aiNote}\n\n${changeLines}${patchBlock}${gateLine(env)}${telemetryNote}`;
+    `${report.summary}${verdictLine}\n\n${changeLines}${patchBlock}${gateLine(env)}${telemetryNote}`;
 }
 
 function resolvedBody(env) {

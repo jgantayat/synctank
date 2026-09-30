@@ -82,7 +82,7 @@ export class ContractAgent {
     this.http.get<AgentStatus>(`${PLATFORM}/agent/status`).subscribe({
       next: (s) => this.status.set(s),
       error: () => this.error.set(
-        'Cannot reach contract-platform on 8081. Is it running, and is DashboardCorsConfig in place?'),
+                `Cannot reach contract-platform at ${PLATFORM}. Is it running, and is this origin in AGENT_DASHBOARD_ORIGINS?`),
     });
   }
 

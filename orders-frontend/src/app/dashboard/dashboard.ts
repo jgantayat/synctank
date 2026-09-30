@@ -113,13 +113,15 @@ export class Dashboard {
   private load(): void {
     this.http.get<SpecVersion[]>(`${PLATFORM}/specs/${SPEC_REPO}/history?limit=25`).subscribe({
       next: (v) => this.specHistory.set(v),
-      error: () => this.error.set(
-        'Cannot reach contract-platform on 8081. Is it running, and does DashboardCorsConfig map /specs/*/history?'),
+            error: () => this.error.set(
+        // Pre-Day-13 — names the URL actually configured (public/config.js), not a hard-coded
+        // port. On the cloud demo the old text sent you looking at localhost:8081.
+        `Cannot reach contract-platform at ${PLATFORM}. Is it running, is this origin in AGENT_DASHBOARD_ORIGINS, and (cloud) is your IP allowed on the load balancer?`),
     });
 
     this.http.get<AppSummary[]>(`${PLATFORM}/registry/apps`).subscribe({
       next: (a) => this.apps.set(a),
-      error: () => this.error.set('Could not load the client registry from contract-platform on 8081.'),
+      error: () => this.error.set(`Could not load the client registry from contract-platform at ${PLATFORM}.`),
     });
 
     this.http.get<TrafficRow[]>(`${PLATFORM}/registry/traffic`).subscribe({

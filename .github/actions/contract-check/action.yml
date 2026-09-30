@@ -175,7 +175,6 @@ runs:
         REPORT_PATH: ${{ steps.report.outputs.report }}
         FRONTEND_LABEL: ${{ inputs.frontend-src }}
         DEMO_TELEMETRY: ${{ inputs.demo-telemetry }}
-        AI_CONFIGURED: ${{ inputs.anthropic-api-key != '' }}
         APPROVAL_LABEL: ${{ inputs.breaking-approval-label }}
         BREAKING_APPROVED: ${{ inputs.breaking-approval-label != '' && contains(github.event.pull_request.labels.*.name, inputs.breaking-approval-label) }}
       with:

@@ -49,4 +49,57 @@ class ChangeReportServiceTest {
         assertThat(meter.snapshot().callsToday()).isEqualTo(1);
         assertThat(meter.snapshot().failuresToday()).isEqualTo(1);
     }
+
+    // ---------- Pre-Day-13 (A2) — no key means no call, and says so ----------
+
+    @Test
+    void withoutAnApiKeyNoModelCallIsMadeAndTheSummarySaysWhy() {
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        AiUsageMeter meter = new AiUsageMeter(new AiProperties(200, 0.005));
+        ChangeReportService service = new ChangeReportService(
+                builder, new UsageScanner("synctank-no-such-binary-7f3a"), meter, false);
+
+        ChangeRecord record = new ChangeRecord(Severity.BREAKING, "FIELD_REMOVED",
+                "Payment.currency", "'Payment.currency' was removed.");
+        ContractImpactReport diff = new ContractImpactReport(true, Severity.BREAKING,
+                List.of(record), "", EffectiveSeverity.BREAKING, List.of());
+
+        ContractChangeReport report = service.generateReport(
+                diff, Path.of(System.getProperty("java.io.tmpdir")));
+
+        assertThat(report.summary()).isEqualTo(ChangeReportService.NOT_CONFIGURED_SUMMARY);
+        assertThat(report.changes()).hasSize(1);
+        assertThat(report.openQuestions()).isEmpty();
+        // The Day 11 cap is untouched: nothing was attempted.
+        assertThat(meter.snapshot().callsToday()).isZero();
+    }
+
+    @Test
+    void thePlaceholderKeyIsNotAConfiguredKey() {
+        assertThat(ChangeReportService.isConfigured("not-configured")).isFalse();
+        assertThat(ChangeReportService.isConfigured(" ")).isFalse();
+        assertThat(ChangeReportService.isConfigured(null)).isFalse();
+        assertThat(ChangeReportService.isConfigured("any-real-looking-key")).isTrue();    }
+
+    // ---------- Pre-Day-13 (B3) — endpoint locations are never grepped ----------
+
+    @Test
+    void endpointLevelChangesGetNoUsageScanAndSoNoFakeHits() {
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        AiUsageMeter meter = new AiUsageMeter(new AiProperties(200, 0.005));
+        // A missing binary makes every scan that DOES run return a "(usage scan failed" line —
+        // so an empty list below proves the scan was skipped, not that it found nothing.
+        ChangeReportService service = new ChangeReportService(
+                builder, new UsageScanner("synctank-no-such-binary-7f3a"), meter, false);
+
+        ChangeRecord removed = new ChangeRecord(Severity.BREAKING, "ENDPOINT_REMOVED",
+                "GET /api/orders/{id}", "Endpoint removed.");
+        ContractImpactReport diff = new ContractImpactReport(true, Severity.BREAKING,
+                List.of(removed), "", EffectiveSeverity.BREAKING, List.of());
+
+        ContractChangeReport report = service.generateReport(
+                diff, Path.of(System.getProperty("java.io.tmpdir")));
+
+        assertThat(report.changes().get(0).usageHits()).isEmpty();
+    }
 }

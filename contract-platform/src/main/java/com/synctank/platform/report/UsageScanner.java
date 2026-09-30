@@ -76,7 +76,7 @@ public class UsageScanner {
      * ts-only glob never saw it. This only ever adds hits, never removes them.
      */
     public List<String> findUsages(Path frontendSrcRoot, String symbol) {
-        return findUsages(List.of(frontendSrcRoot), symbol);
+        return search(List.of(frontendSrcRoot), symbol, false);
     }
 
     /**
@@ -88,6 +88,16 @@ public class UsageScanner {
      * Returns lines shaped "path:line:matched text".
      */
     public List<String> findUsages(List<Path> roots, String symbol) {
+        // Pre-Day-13 (B2) — consumer directories are searched ONE LEVEL deep. Each directory in
+        // `roots` was chosen because a file directly inside it imports the generated client
+        // (findClientConsumerDirs). Searching it recursively made src/app — chosen only because
+        // app.config.ts imports BASE_PATH — pull in every feature folder beneath it, so the
+        // dashboard and the contract-agent panel were registered as consumers of OrderResponse
+        // for merely containing the word "status". Only the Day 06 registry uses this overload.
+        return search(roots, symbol, true);
+    }
+
+    private List<String> search(List<Path> roots, String symbol, boolean directChildrenOnly) {
         if (roots.isEmpty()) {
             // Guard, not politeness: ripgrep with zero path arguments searches the
             // process working directory, which for a Spring Boot jar is wherever the
@@ -95,8 +105,11 @@ public class UsageScanner {
             // is far worse than returning nothing.
             return List.of();
         }
-        List<String> command = new ArrayList<>(List.of(
-                binary, "-n", "--no-heading",
+        List<String> command = new ArrayList<>(List.of(binary, "-n", "--no-heading"));
+        if (directChildrenOnly) {
+            command.addAll(List.of("--max-depth", "1"));
+        }
+        command.addAll(List.of(
                 "-g", "*.ts", "-g", "*.html",
                 "\\b" + symbol + "\\b"));
         roots.forEach(root -> command.add(root.toString()));
@@ -147,7 +160,10 @@ public class UsageScanner {
         List<String> hits = new ArrayList<>();
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
+            // Pre-Day-13 (B3) — stderr is NOT merged into the hits any more. It used to be, so
+            // every ripgrep complaint ("No such file or directory", "regex parse error") came
+            // back looking like a match and was printed on the pull request as a use site.
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
             Process process = pb.start();
             try (var reader = process.inputReader()) {
                 reader.lines()
@@ -157,6 +173,11 @@ public class UsageScanner {
             boolean finished = process.waitFor(10, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
+                hits.add(SCAN_FAILED_PREFIX + ": timed out)");
+            } else if (process.exitValue() == 2) {
+                // ripgrep exits 2 on an error. Say so once, in the same shape as a missing
+                // binary, instead of returning the error text as if it were a use site.
+                hits.add(SCAN_FAILED_PREFIX + ": rg exited 2)");
             }
             // ripgrep exits 1 on zero matches — a valid "nothing found", not an error.
         } catch (IOException e) {
