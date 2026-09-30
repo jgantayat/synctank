@@ -27,6 +27,8 @@ public class DiffService {
         // Day 07 backlog — added fields were silently dropped until now. Cannot raise highestSeverity.
         records.addAll(classifier.classifyAddedFields(changed.getOldSpecOpenApi(), changed.getNewSpecOpenApi()));
         records.addAll(classifier.classifyDangerousChanges(changed.getOldSpecOpenApi(), changed.getNewSpecOpenApi()));
+        // Pre-Day-13 — parameters on endpoints that still exist were never classified.
+        records.addAll(classifier.classifyParameterChanges(changed));
 
         Severity highest = records.stream()
                 .map(ChangeRecord::severity)

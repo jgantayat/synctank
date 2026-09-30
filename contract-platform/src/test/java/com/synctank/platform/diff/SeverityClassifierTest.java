@@ -94,6 +94,44 @@ class SeverityClassifierTest {
                 .noneMatch(c -> c.severity() == Severity.BREAKING);
     }
 
+    // ---------- Pre-Day-13 (B1) — parameters on an endpoint that still exists ----------
+
+    @Test
+    void parameterChangesOnASurvivingEndpointAreClassified() throws IOException {
+        // params-*.json: GET /api/orders keeps existing, but 'status' is removed, 'page' becomes
+        // required, 'customerId' is added as required and 'limit' is added as optional.
+        DiffReport report = diffFixtures("params-before.json", "params-after.json");
+
+        assertThat(report.highestSeverity()).isEqualTo(Severity.BREAKING);
+        assertThat(categoriesOf(report)).contains(
+                "PARAMETER_REMOVED", "REQUIRED_PARAMETER_ADDED", "PARAMETER_CHANGED", "PARAMETER_ADDED");
+        assertThat(report.changes())
+                .filteredOn(c -> c.category().startsWith("PARAMETER") || c.category().startsWith("REQUIRED_PARAMETER"))
+                .allMatch(c -> c.location().equals("GET /api/orders"));
+    }
+
+    @Test
+    void theOptionalParameterAddedIsAdditive() throws IOException {
+        // 'limit' is optional: it must be recorded, and must not be what makes the diff BREAKING.
+        DiffReport report = diffFixtures("params-before.json", "params-after.json");
+
+        assertThat(report.changes())
+                .filteredOn(c -> "PARAMETER_ADDED".equals(c.category()))
+                .singleElement()
+                .satisfies(c -> assertThat(c.severity()).isEqualTo(Severity.ADDITIVE));
+    }
+
+    @Test
+    void existingFixturesGainNoParameterRecords() throws IOException {
+        // None of the Day 03-08 fixture pairs touch parameters; their verdicts must not move.
+        for (String name : new String[]{"additive", "breaking", "dangerous", "dangerous31", "required-add"}) {
+            DiffReport report = diffFixtures(name + "-before.json", name + "-after.json");
+            assertThat(categoriesOf(report))
+                    .as(name)
+                    .noneMatch(c -> c.contains("PARAMETER"));
+        }
+    }
+
     private DiffReport diffFixtures(String beforeFile, String afterFile) throws IOException {
         return diffService.diff(readFixture(beforeFile), readFixture(afterFile));
     }

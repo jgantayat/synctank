@@ -7,7 +7,14 @@ services:
     # problem and is not one. A locally cached image masks it, so this fails only on a clean
     # host: CI, a new laptop, the machine you demo from. Quay serves the identical image
     # (digest sha256:14cea493…, the same one `minio/minio:latest` resolved to).
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+        #
+    # Pre-Day-13 — quay.io now refuses ANONYMOUS pulls of this image too ("unauthorized", seen on
+    # PR #22). CI no longer needs it (the Day 12 action uses LocalStack S3), but this local stack
+    # still does, and it only works on a machine that already has the image cached. Keep a copy:
+    #     docker save quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z | gzip > ~/synctank-minio.tar.gz
+    # and restore it on any machine with:  gunzip -c ~/synctank-minio.tar.gz | docker load
+    # MINIO_IMAGE overrides the tag without editing this file, if you ever mirror it elsewhere.
+    image: ${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z}
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"   # S3 API

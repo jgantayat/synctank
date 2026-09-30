@@ -64,6 +64,14 @@ jobs:
         working-directory: orders-frontend
         run: npm run build
 
+      # Pre-Day-13 (Day 12 F9) — the frontend's own unit tests had never run in CI; the Day 10
+      # image job did the same for contract-platform's. Runs only when the build above passed:
+      # tests cannot compile against a client the build already rejected, and that failure is
+      # already the loudest thing on the PR. The contract check below still runs either way.
+      - name: Frontend unit tests
+        working-directory: orders-frontend
+        run: npx ng test --watch=false
+
       # ---------- Day 12: Levels 1-2 as one reusable step ----------
       # Everything that used to be eleven inline steps (start MinIO + Postgres, build and start
       # contract-platform, seed the registry, seed telemetry, diff, report, comment, three gates,

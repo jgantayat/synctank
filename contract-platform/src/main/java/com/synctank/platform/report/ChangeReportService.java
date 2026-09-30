@@ -7,6 +7,8 @@ import com.synctank.platform.radar.ContractImpactReport;        // Day 06
 import com.synctank.platform.radar.ImpactAssessment;            // Day 06
 import com.synctank.platform.ai.AiUsageMeter;                   // Day 11
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
@@ -18,15 +20,47 @@ import java.util.stream.Collectors;
 @Service
 public class ChangeReportService {
 
+    /** The placeholder application.yaml uses when ANTHROPIC_API_KEY is not set (Day 09 F3). */
+    static final String UNCONFIGURED_KEY = "not-configured";
+
+    static final String NOT_CONFIGURED_SUMMARY = "AI narration is not configured on this platform "
+            + "(no ANTHROPIC_API_KEY) — showing the deterministic classification and Impact Radar "
+            + "data directly.";
+
     private final ChatClient chatClient;
     private final UsageScanner usageScanner;
     private final AiUsageMeter aiUsage;
+    private final boolean aiConfigured;
 
+    /**
+     * Pre-Day-13 (A2) — the platform now knows when it has no key. Before, it called Anthropic
+     * with the literal placeholder "not-configured", received a 401, spent one unit of the Day 11
+     * daily cap on it, and reported "AI narration failed this run (UnauthorizedException)" —
+     * a failure message for something that was never attempted on purpose.
+     */
+    @Autowired
+    public ChangeReportService(ChatClient.Builder chatClientBuilder, UsageScanner usageScanner,
+                               AiUsageMeter aiUsage,
+                               @Value("${spring.ai.anthropic.api-key:" + UNCONFIGURED_KEY + "}") String apiKey) {
+        this(chatClientBuilder, usageScanner, aiUsage, isConfigured(apiKey));
+    }
+
+    /** Existing tests' constructor: behaves exactly as before today (a key is assumed). */
     public ChangeReportService(ChatClient.Builder chatClientBuilder, UsageScanner usageScanner,
                                AiUsageMeter aiUsage) {
+        this(chatClientBuilder, usageScanner, aiUsage, true);
+    }
+
+    ChangeReportService(ChatClient.Builder chatClientBuilder, UsageScanner usageScanner,
+                        AiUsageMeter aiUsage, boolean aiConfigured) {
         this.chatClient = chatClientBuilder.build();
         this.usageScanner = usageScanner;
         this.aiUsage = aiUsage;
+        this.aiConfigured = aiConfigured;
+    }
+
+    static boolean isConfigured(String apiKey) {
+        return apiKey != null && !apiKey.isBlank() && !UNCONFIGURED_KEY.equals(apiKey.trim());
     }
 
     /**
@@ -44,7 +78,12 @@ public class ChangeReportService {
         Map<ChangeRecord, List<String>> usagesByChange = diffReport.changes().stream()
                 .collect(Collectors.toMap(
                         change -> change,
-                        change -> usageScanner.findUsages(frontendSrcRoot, leafFieldName(change.location())),
+                        // Pre-Day-13 (B3) — endpoint-level locations ("GET /api/orders/{id}") are
+                        // not symbols. Grepping for one found nothing at best, and at worst fed
+                        // `{id}` to ripgrep as a regex repetition and got its error back as a hit.
+                        change -> isEndpointLocation(change.location())
+                                ? List.<String>of()
+                                : usageScanner.findUsages(frontendSrcRoot, leafFieldName(change.location())),
                         (first, duplicate) -> first,       // identical records: one scan is enough
                         LinkedHashMap::new                 // keep diff order
                 ));
@@ -78,6 +117,10 @@ public class ChangeReportService {
                                 : String.join("; ", usagesByChange.get(change))
                 ))
                 .collect(Collectors.joining("\n"));
+
+        if (!aiConfigured) {
+            return deterministicReport(diffReport, usagesByChange, NOT_CONFIGURED_SUMMARY, List.of());
+        }
 
         String systemPrompt = """
                 You are writing a pull-request comment for a Spring Boot + Angular API contract change.
@@ -137,23 +180,31 @@ public class ChangeReportService {
             // timeout, network hiccup) should never turn into a raw 500 with no useful content.
             // Day 06: the radar data survives the fallback intact, because it never came from
             // the AI in the first place. A degraded report still names the affected screens.
-            List<ChangeExplanation> fallbackChanges = diffReport.changes().stream()
-                    .map(change -> new ChangeExplanation(
-                            change.location(),
-                            change.severity().toString(),
-                            change.description(),
-                            usagesByChange.getOrDefault(change, List.of())
-                    ))
-                    .toList();
-
-            return new ContractChangeReport(
+            return deterministicReport(diffReport, usagesByChange,
                     "Automated AI narration failed this run (%s) — showing the deterministic classification and Impact Radar data directly."
                             .formatted(e.getClass().getSimpleName()),
-                    fallbackChanges,
-                    "",
-                    List.of("AI-generated summary and migration suggestion were unavailable this run — the Impact Radar findings below are unaffected."),
-                    diffReport.impact());
+                    List.of("AI-generated summary and migration suggestion were unavailable this run — the Impact Radar findings below are unaffected."));
         }
+    }
+
+    /** Day 03's descriptions + the real usage hits + the radar list. Nothing from a model. */
+    private static ContractChangeReport deterministicReport(ContractImpactReport diffReport,
+                                                            Map<ChangeRecord, List<String>> usagesByChange,
+                                                            String summary, List<String> openQuestions) {
+        List<ChangeExplanation> changes = diffReport.changes().stream()
+                .map(change -> new ChangeExplanation(
+                        change.location(),
+                        change.severity().toString(),
+                        change.description(),
+                        usagesByChange.getOrDefault(change, List.of())
+                ))
+                .toList();
+        return new ContractChangeReport(summary, changes, "", openQuestions, diffReport.impact());
+    }
+
+    /** Day 03 endpoint locations are "METHOD /path"; field locations never contain a space. */
+    static boolean isEndpointLocation(String location) {
+        return location != null && location.contains(" ");
     }
 
     private static String describeEffective(ImpactAssessment assessment) {

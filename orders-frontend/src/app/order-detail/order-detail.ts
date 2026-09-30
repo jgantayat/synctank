@@ -1,5 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { OrderControllerService, OrderResponse } from '../generated';
+import { ORDERS_BASE } from '../api-config';
 
 @Component({
   selector: 'app-order-detail',
@@ -20,7 +21,7 @@ export class OrderDetail implements OnInit {
   ngOnInit(): void {
     this.orderApi.getOrder({ id: 1 }).subscribe({
       next: (order) => this.order.set(order),
-      error: () => this.error.set('Could not reach orders-backend on :8080.'),
+      error: () => this.error.set(`Could not reach orders-backend at ${ORDERS_BASE}.`),
     });
   }
 

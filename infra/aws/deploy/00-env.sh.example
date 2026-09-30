@@ -1,6 +1,5 @@
-# Day 11 — copy to 00-env.sh and fill in. 00-env.sh is NOT gitignored by name, so it must
-# never hold a credential: it holds identifiers only. Credentials live in Secrets Manager.
-#
+# Day 11 — copy to 00-env.sh and fill in. 00-env.sh is gitignored (root .gitignore), but it
+# still must never hold a credential: it holds identifiers only. Credentials live in Secrets Manager.
 #   cp infra/aws/deploy/00-env.sh.example infra/aws/deploy/00-env.sh
 #   $EDITOR infra/aws/deploy/00-env.sh
 #   source infra/aws/deploy/00-env.sh

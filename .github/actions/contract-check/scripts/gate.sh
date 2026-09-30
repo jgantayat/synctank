@@ -72,7 +72,14 @@ case "$GATE" in
   SAFE_WITH_NOTE)
     echo "::notice title=Downgraded contract change (${KEY})::Classified ${SEVERITY}, but no registered consumer compiles against it. Merge is unblocked; see the PR comment." ;;
   ADDITIVE)
-    echo "Additive contract change in ${KEY} — safe for existing consumers." ;;
+    # v1.0.1 — EffectiveSeverity ranks SAFE_WITH_NOTE below ADDITIVE, so a PR that removes a
+    # field nobody uses AND adds another reports ADDITIVE overall, and the downgrade notice was
+    # never printed (Day 12 J2 step 2). The classifier's own verdict says whether one happened.
+    if [ "$SEVERITY" = BREAKING ]; then
+      echo "::notice title=Downgraded contract change (${KEY})::Classified BREAKING, but no registered consumer compiles against the removed or changed parts. Merge is unblocked; see the PR comment."
+    else
+      echo "Additive contract change in ${KEY} — safe for existing consumers."
+    fi ;;
   *)
     echo "::error title=Contract check::unexpected gate severity '${GATE}'"
     exit 1 ;;

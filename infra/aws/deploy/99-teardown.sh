@@ -3,7 +3,11 @@
 # the most money. Leaves the S3 bucket and the secret alone: those hold state you may want,
 # and neither costs anything meaningful. Delete them by hand when you are truly done.
 set -euo pipefail
-: "${AWS_REGION:?source 00-env.sh first}"
+: "${AWS_REGION:?source 00-env.sh first}" "${CLUSTER:?source 00-env.sh first}" "${SERVICE:?source 00-env.sh first}"
+# TG_ARN comes from 01-provisioned.sh. Checked HERE, not where it is used: under `set -u` a
+# missing TG_ARN used to abort the script AFTER the load balancer was already deleted, leaving
+# an orphaned target group and no message saying why.
+: "${TG_ARN:?source 01-provisioned.sh first}"
 
 echo "=== scale the service to zero (this is ~70% of the cost, and it is reversible)"
 aws ecs update-service --region "$AWS_REGION" --cluster "$CLUSTER" --service "$SERVICE" \

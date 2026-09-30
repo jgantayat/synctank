@@ -70,6 +70,36 @@ test('no frontend-src means no usage line and the gate names its basis', () => {
   assert.doesNotMatch(body, /seeded demo telemetry/);
 });
 
+test('v1.0.1: without radar evidence the radar verdict is not presented as counting', () => {
+  // The adopter-demo comment: radar said SAFE_WITH_NOTE / "merge is unblocked" while the gate
+  // (correctly) said BREAKING / "merge blocked".
+  const downgraded = {
+    ...diff,
+    effectiveSeverity: 'SAFE_WITH_NOTE',
+    impact: [{ ...diff.impact[0], effectiveSeverity: 'SAFE_WITH_NOTE', consumers: [],
+               verdict: 'Downgraded to SAFE_WITH_NOTE — the merge is unblocked, the change is still recorded.' }],
+  };
+  const env = { ...baseEnv, FRONTEND_LABEL: '', REGISTRY_SEEDED: 'false',
+                EFFECTIVE_SEVERITY: 'SAFE_WITH_NOTE', DEMO_TELEMETRY: '' };
+  const body = buildBody(env, null, downgraded);
+  assert.doesNotMatch(body, /re-weighted/);
+  assert.doesNotMatch(body, /merge is unblocked/);
+  assert.match(body, /Blast radius:\*\* not assessed — no consumer evidence/);
+  assert.match(body, /merge blocked/);
+});
+
+test('v1.0.1: with radar evidence the re-weighting is still shown', () => {
+  const env = { ...baseEnv, EFFECTIVE_SEVERITY: 'SAFE_WITH_NOTE', GATE_SEVERITY: 'SAFE_WITH_NOTE' };
+  const body = buildBody(env, report, diff);
+  assert.match(body, /re-weighted this PR/);
+});
+
+test('v1.0.1: no separate "not configured" note — the summary carries it', () => {
+  const env = { ...baseEnv, AI_CONFIGURED: 'false' };
+  const body = buildBody(env, report, diff);
+  assert.doesNotMatch(body, /AI narration is not configured for this repository/);
+});
+
 test('an approved breaking change says so', () => {
   const body = buildBody({ ...baseEnv, BREAKING_APPROVED: 'true' }, report, diff);
   assert.match(body, /\*\*approved\*\* by the `contract:breaking-approved` label/);
