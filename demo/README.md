@@ -38,6 +38,7 @@ never :8080 — `mvn verify` starts its own copy on :8080 to write the spec.
 | `slide3-migrate.sh` | applies `slide3/order-detail.migrated.ts`, build passes, backend restarted |
 | `refusal.sh` | forced proposal (BigDecimal) → guardrail G2 refuses, model never called |
 | `reset.sh [--yes]` | back to main, contract regenerated, agent PRs closed, agent branches deleted |
+| `adopter.sh setup\|check\|adopt\|prs\|status\|approve\|reset` | Round 2: a second repo (`jgantayat/synctank-adopter-live`) adopts the check live; `reset` returns it to before |
 
 `slide3/order-detail.migrated.ts` is the human-reviewed Slide 3 migration. It is copied over
 `order-detail.ts` on the prop branch only, and `reset.sh` restores the original.
@@ -62,8 +63,14 @@ bash demo/slide3-migrate.sh      # refresh browser
 
 # Slide 4 — dashboard: Draft change → Approve → PR; typed refusal; optional: bash demo/refusal.sh
 
+# Round 2 only — Demo 3, live adoption in a second repo
+bash demo/adopter.sh adopt && bash demo/adopter.sh prs
+#   ~3 min of CI: present the architecture slide meanwhile
+bash demo/adopter.sh status
+
 # After
 bash demo/reset.sh
+bash demo/adopter.sh reset --yes
 bash demo/cloud-down.sh
 bash demo/target.sh restore
 ```
