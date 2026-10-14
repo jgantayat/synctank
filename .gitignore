@@ -1,6 +1,7 @@
 .claude/
 skills-lock.json
 CLAUDE.md
+.archify/
 
 # ---------- Day 09 — credential material never belongs in this repository ----------
 # The platform's credentials now live in AWS Secrets Manager. Anything below is a local
