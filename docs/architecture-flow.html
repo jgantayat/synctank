@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SyncTank — Architecture &amp; Request Flow</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --panel-bg: #11182a;
+    --border: #243049;
+    --text: #e8edf7;
+    --muted: #93a0bf;
+    --accent: #5b8def;
+    --accent-ink: #0b0f1a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6fb;
+      --panel-bg: #ffffff;
+      --border: #d7deed;
+      --text: #141a2b;
+      --muted: #566283;
+      --accent: #2f5fd8;
+      --accent-ink: #ffffff;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 18px 24px 14px;
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  header h1 {
+    margin: 0 0 4px;
+    font-size: 1.25rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.88rem;
+    max-width: 920px;
+    line-height: 1.45;
+  }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+    background: var(--panel-bg);
+  }
+  nav button {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 560;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+  }
+  nav button:hover { border-color: var(--accent); }
+  nav button.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+  .panel-note {
+    padding: 10px 24px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  main {
+    flex: 1 1 auto;
+    position: relative;
+    min-height: 0;
+  }
+  .frame-wrap {
+    position: absolute;
+    inset: 0;
+    display: none;
+  }
+  .frame-wrap.active { display: block; }
+  iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: var(--panel-bg);
+  }
+  .fallback {
+    padding: 24px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .fallback a { color: var(--accent); }
+  footer {
+    padding: 8px 24px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>SyncTank — Architecture &amp; Request Flow</h1>
+    <p>Five code-backed diagrams of the synctank monorepo, generated with Archify from the actual source at commit
+      <code>d96a4e4</code>. Switch panels above; each one is a standalone, independently-verified diagram with its own
+      legend, source citations (hover or open a node to see the file it came from), and live motion along the
+      connectors — use each panel's own Live/Still control to pause it.</p>
+  </header>
+
+  <nav id="tabs">
+    <button data-target="runtime" class="active">1 · Runtime Request Flow</button>
+    <button data-target="pipeline">2 · CI/CD Contract Pipeline</button>
+    <button data-target="agent">3 · Contract Agent Loop</button>
+    <button data-target="aws">4 · AWS Production Topology</button>
+    <button data-target="internals">5 · Inside contract-platform</button>
+  </nav>
+
+  <div class="panel-note" id="panel-note"></div>
+
+  <main>
+    <div class="frame-wrap active" id="wrap-runtime">
+      <iframe src="architecture/runtime-flow.html" title="Runtime Request Flow" loading="eager"></iframe>
+    </div>
+    <div class="frame-wrap" id="wrap-pipeline">
+      <iframe src="architecture/ci-pipeline.html" title="CI/CD Contract Pipeline" loading="lazy"></iframe>
+    </div>
+    <div class="frame-wrap" id="wrap-agent">
+      <iframe src="architecture/contract-agent.html" title="Contract Agent Loop" loading="lazy"></iframe>
+    </div>
+    <div class="frame-wrap" id="wrap-aws">
+      <iframe src="architecture/aws-topology.html" title="AWS Production Topology" loading="lazy"></iframe>
+    </div>
+    <div class="frame-wrap" id="wrap-internals">
+      <iframe src="architecture/platform-internals.html" title="Inside contract-platform" loading="lazy"></iframe>
+    </div>
+  </main>
+
+  <footer>
+    If a panel appears blank, your browser may restrict local iframes opened via <code>file://</code> — open the file
+    directly instead: <code>docs/architecture/runtime-flow.html</code>, <code>ci-pipeline.html</code>,
+    <code>contract-agent.html</code>, <code>aws-topology.html</code>, <code>platform-internals.html</code> (same folder).
+  </footer>
+
+<script>
+  var notes = {
+    runtime: "What actually calls what at demo time or in production — the browser, orders-frontend, orders-backend, contract-platform, and the stores/APIs behind it.",
+    pipeline: "What .github/workflows/contract.yml and the contract-check composite action do on every PR and every push to main.",
+    agent: "The bi-directional loop: contract-platform proposes a contract change, and a human gates it twice before anything reaches GitHub.",
+    aws: "contract-platform on ECS Fargate — note there is no RDS; Postgres runs as a sidecar container in the same task.",
+    internals: "One Spring Boot service, eight packages — who calls whom, and which packages actually hold state."
+  };
+  var buttons = document.querySelectorAll('#tabs button');
+  var note = document.getElementById('panel-note');
+  function activate(target) {
+    buttons.forEach(function (b) {
+      b.classList.toggle('active', b.dataset.target === target);
+    });
+    document.querySelectorAll('.frame-wrap').forEach(function (w) {
+      w.classList.toggle('active', w.id === 'wrap-' + target);
+    });
+    note.textContent = notes[target] || '';
+  }
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () { activate(b.dataset.target); });
+  });
+  activate('runtime');
+</script>
+</body>
+</html>
