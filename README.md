@@ -40,45 +40,20 @@ from this repository's source — walk through the system end to end.
 > only be viewed on the page above, not inside this README. The previews below are static
 > screenshots — **click any of them** to jump straight to the real, interactive panel.
 
-<table>
-<tr>
-<td width="50%">
-
 ### 1️⃣ Runtime Request Flow
 [![Runtime request flow](docs/architecture/previews/runtime-flow.png)](https://jgantayat.github.io/synctank/architecture-flow.html)
-
-</td>
-<td width="50%">
 
 ### 2️⃣ CI/CD Contract-Safety Pipeline
 [![CI/CD pipeline](docs/architecture/previews/ci-pipeline.png)](https://jgantayat.github.io/synctank/architecture-flow.html)
 
-</td>
-</tr>
-<tr>
-<td width="50%">
-
 ### 3️⃣ Contract Agent Loop
 [![Contract Agent loop](docs/architecture/previews/contract-agent.png)](https://jgantayat.github.io/synctank/architecture-flow.html)
-
-</td>
-<td width="50%">
 
 ### 4️⃣ AWS Production Topology
 [![AWS production topology](docs/architecture/previews/aws-topology.png)](https://jgantayat.github.io/synctank/architecture-flow.html)
 
-</td>
-</tr>
-<tr>
-<td width="50%">
-
 ### 5️⃣ Inside contract-platform
 [![contract-platform internals](docs/architecture/previews/platform-internals.png)](https://jgantayat.github.io/synctank/architecture-flow.html)
-
-</td>
-<td width="50%"></td>
-</tr>
-</table>
 
 ---
 
